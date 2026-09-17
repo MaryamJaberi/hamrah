@@ -1,0 +1,10 @@
+node_modules
+.next
+.env*.local
+out
+android
+ios
+playwright-report
+test-results
+*.tsbuildinfo
+next-env.d.ts

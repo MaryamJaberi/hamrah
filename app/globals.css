@@ -1,0 +1,25 @@
+@import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body { background: #F4F4FA; color: #17172A; }
+* { -webkit-tap-highlight-color: transparent; }
+
+@layer components {
+  .card { @apply bg-white rounded-2xl p-4 shadow-[0_4px_20px_rgba(30,30,80,.05)]; }
+  .btn { @apply inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl font-bold text-sm bg-primary text-white transition active:scale-[.97] disabled:opacity-50 disabled:pointer-events-none; }
+  .btn-sm { @apply px-3 py-2 text-xs rounded-xl; }
+  .btn-sec { @apply bg-[#EFEFF6] text-ink; }
+  .btn-ghost { @apply bg-transparent text-primary border-2 border-primary; }
+  .btn-danger { @apply bg-warn-soft text-warn; }
+  .chip { @apply inline-flex items-center text-xs px-3 py-1 rounded-full bg-primary-soft text-primary font-semibold; }
+  .chip-on { @apply bg-primary text-white; }
+  .chip-accent { @apply bg-accent-soft text-[#00805F]; }
+  .chip-ghost { @apply bg-[#F1F1F7] text-muted; }
+  .input { @apply w-full px-4 py-3 rounded-2xl border-2 border-line bg-white outline-none focus:border-primary transition; }
+  .label { @apply block text-sm font-bold mb-1.5; }
+  .section { @apply text-xs font-bold text-muted mt-6 mb-2; }
+  .page { @apply p-4 pb-28; }
+  .h1 { @apply text-lg font-extrabold mb-4; }
+}
