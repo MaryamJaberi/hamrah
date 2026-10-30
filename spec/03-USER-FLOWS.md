@@ -14,7 +14,7 @@ Legend: ✅ exists in v1 · 🆕 to build (milestone in brackets).
 1. `/discover`: incoming requests on top (accept → chat; reject), then ranked suggestions with match %.
 2. Request form: optional goal + message (prefilled).
 3. Recipient gets push; accept runs `accept_request()` → connection + first message.
-4. 🆕 [M3] Request carries a **mode** (`buddy | exchange | mentorship`); suggestions are filterable by mode chips at the top.
+4. 🆕 [M3] Request carries a **kind** (`buddy | exchange`); suggestions are filterable by mode chips at the top. Mentorship is not requested here — it opens via `/mentors` and `/u/[id]` (free or paid).
 5. 🆕 [M3] Ranking is done in SQL (`suggest_people` RPC), not on the latest 100 profiles.
 
 ## F3 Chat ✅
@@ -40,18 +40,18 @@ Realtime messages per connection; header links to room and profile; safety menu 
 6. Personal checklist + notes (private to each participant).
 7. Optional video tab (Jitsi, room name `hamrah-{sessionId}`), mounted once so switching tabs does not drop the call.
 8. **Wrap-up**: each writes "what I did" + "next step", and may tick "this moved my goal forward" → goal progress +1 step.
-9. Session ends when both submit wrap-up, or the first wrap-up + 15 min, or planned end + 30 min (server job). `actual_min` = timer elapsed.
+9. Session ends when all participants submit wrap-up, or by server job at planned end + 30 min (`done` if timer ran ≥ 1 min, else `cancelled`). `actual_min` = timer elapsed.
 10. Review prompt for the other participant (existing `ReviewForm`).
 11. In-person sessions: same room UI without video; plus safety check (F9).
 
 ## F6 Goals & progress ✅ / 🆕 [M2]
 ✅ Create goal (title, category, per-week, level, mode), manual ±10%.
-🆕 Goal has a `target_sessions` (default = per_week × 4). Completed sessions linked to the goal advance progress automatically; manual adjust stays.
+🆕 Goal has a `target_sessions` (set to per_week × 4 on insert by trigger, editable in the goal form; existing goals backfilled the same way). Completed sessions linked to the goal advance progress automatically; manual adjust stays.
 🆕 Weekly streak: a week counts if the user met ≥ 1 completed session (or the goal's per_week, shown separately). Streak shown on `/goals` and `/sessions`.
 
 ## F7 Mentorship ✅ / 🆕 [M6]
 ✅ Mentor toggles mentor mode in profile (price in USD/EUR/IRR, bio, topics). Free → `start_free_mentorship()`; paid → Stripe Checkout or Zarinpal → webhook/verify → connection.
-🆕 [M6] Mentor publishes weekly **slots**; a mentee books a slot at checkout, so payment = one scheduled session (`sessions.payment_id`).
+🆕 [M6] Mentor publishes weekly **slots**; a mentee books a slot at checkout, so payment = one scheduled session (`payments.session_id`).
 🆕 [M6] Payouts via Stripe Connect Express (EUR/USD); IRR payouts tracked manually by admin (`payouts` table) — see OPEN-QUESTIONS.
 🆕 [M6] Refund: admin can refund a paid session (Stripe refund API; Zarinpal manual) → `payments.status='refunded'`.
 
@@ -64,7 +64,7 @@ Realtime messages per connection; header links to room and profile; safety menu 
 **"Let's go together" events**
 1. `/together` (tab "رویدادها") lists posts: title, category, date/time, city, place name (public venue), max companions, cost note, external link.
 2. User taps "I'm in" → join request; host approves.
-3. Approved members get a group chat (connection of kind `group`).
+3. Approved members get a group chat (`messages.group_id`, see `04-DATA-MODEL.md` 007 — `connections` stay 2-person).
 4. Day before: reminder; in-person safety rules shown (F9).
 5. After the event: members can review each other (only those who were approved).
 
@@ -82,6 +82,6 @@ Report (6 reasons) and block from profile/chat; blocked users disappear from dis
 Export data (JSON) and delete account (`/api/account`). Push toggle (web + native).
 
 ## F12 Admin ✅ / 🆕
-✅ Dashboard counters, KYC review with signed URLs, reports workflow, users (ban/unban, make admin), payments.
+✅ Dashboard counters, KYC review with signed URLs, reports workflow, users (ban/unban), payments. Making someone admin is only possible via `SEED_ADMIN_EMAIL` in `scripts/seed.mjs` (no UI — intentional).
 🆕 [M4] Moderate events and rooms (hide, cancel).
 🆕 [M6] Refunds, payouts, metrics for north-star and activation (see `01-PRODUCT-BRIEF.md`).

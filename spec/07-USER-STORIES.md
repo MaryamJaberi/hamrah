@@ -10,6 +10,7 @@ Format: **ID — As a … I want … so that …** then acceptance criteria (AC)
 - AC2 `npm run e2e -- --project=mobile` passes the public suite.
 - AC3 With a test Supabase project and `E2E_TEST_SECRET`, `e2e/app.spec.ts` passes.
 - AC4 Onboarding no longer shows raw DB error text; shows "ذخیره نشد، دوباره امتحان کن".
+- AC5 Gap G15 fixed: if B blocked A, B does not appear in A's discover (two-browser E2E test).
 
 ## M1 — Scheduling
 **S1.1 — As a user, I want to propose a session time to my companion so that we commit to a slot.** [e2e/schedule.spec.ts]
@@ -56,7 +57,7 @@ Format: **ID — As a … I want … so that …** then acceptance criteria (AC)
 
 **S2.3 — As a user, I want a session record and goal progress after wrap-up.** [room.spec.ts, sql/room.sql]
 - AC1 Each participant submits their own wrap-up; session becomes `done` when all did, or by cron at planned end + 30 min if timer ran ≥ 1 min.
-- AC2 Ticking "moved my goal" increments `completed_sessions`; progress = round(100 × completed / target), capped at 100.
+- AC2 New goals get `target_sessions = per_week × 4` (editable). Ticking "moved my goal" increments `completed_sessions`; progress = round(100 × completed / target), capped at 100.
 - AC3 Both can review each other once; review insert fails for a non-participant.
 - AC4 Instant session from chat (`/room/now/[connId]`) works without scheduling.
 

@@ -82,6 +82,9 @@ alter table public.sessions
 alter table public.goals
   add column if not exists target_sessions int not null default 8 check (target_sessions between 1 and 500),
   add column if not exists completed_sessions int not null default 0;
+-- trigger before insert on goals: target_sessions := per_week * 4 unless explicitly given;
+-- backfill: update goals set target_sessions = per_week * 4;
+-- target_sessions becomes user-writable (column grant) so the goal form can edit it.
 -- backfill: every existing session gets its host as a participant with checkin/wrapup copied.
 ```
 - Participants: for 1:1 sessions both connection members are inserted when the session is created (trigger). Private per-user fields (personal checklist, notes) stay client-side or in `session_participants.wrapup` — notes are **not** visible to the partner.
@@ -201,7 +204,7 @@ create table public.private_profile (
   stripe_account_id text
 ); -- no user policies; service role only.
 ```
-Booking a slot reserves it for 15 min (`sessions` row `proposed` with `payment_id`); payment success → `planned`; expiry → deleted.
+Booking a slot reserves it for 15 min (`sessions` row `proposed`, linked from `payments.session_id`); payment success → `planned`; expiry → deleted.
 
 ---
 

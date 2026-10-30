@@ -17,5 +17,14 @@ Decisions the owner (Maryam) has not made yet. The agent must **not** decide the
 | Q11 | Bottom nav in v2: replace "هدف‌ها" with "جمع" (proposed) | Replace in M4 | M4 |
 | Q12 | Interests list: keep v1's 16 or expand per market? | Keep, add "نوشتن" and "کار اداری" | M3 |
 
+## Resolved 2026-10-30 (after agent read-through)
+- Group chats use `group_id` on messages/sessions/reviews (04), not a `group` connection kind.
+- `requests.kind` is `buddy | exchange` only; mentorship opens via /mentors and /u/[id].
+- `target_sessions` = per_week × 4 on insert + backfill; user-editable.
+- No "first wrap-up + 15 min" rule; finalize at all wrap-ups or planned end + 30 min.
+- Slot booking link is `payments.session_id`.
+- No "make admin" UI; admins are created via the seed script only.
+- Two-way block hiding on discover is fixed in M0 (G15).
+
 ## Agent-added questions
 <!-- append: | Qxx | question | default used | where | (YYYY-MM-DD) -->
