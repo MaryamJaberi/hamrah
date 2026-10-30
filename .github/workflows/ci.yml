@@ -15,6 +15,7 @@ jobs:
         with: { node-version: 20, cache: npm }
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run test:sql
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test --project=mobile
       - uses: actions/upload-artifact@v4

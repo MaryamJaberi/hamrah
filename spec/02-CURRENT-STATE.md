@@ -72,5 +72,5 @@ RPCs: `accept_request`, `start_free_mentorship`, `search_people`, helpers `is_ad
 | G11 | `meet.jit.si` limits embedded calls to 5 min | `.env` `NEXT_PUBLIC_JITSI_DOMAIN` | M6 (config) |
 | G12 | Connections cannot be ended / archived by users | `connections.status` | M1 |
 | G13 | `matchScore` can drop below the floor for low-rated users only via clamp; rating weight is ad hoc | `matching.ts` | M3 |
-| G15 | Discover hides only users *I* blocked; if B blocked A, A still sees B (RLS on `blocks` only exposes own rows). `search_people` is correct. Fix with an `is_blocked_between` filter (e.g. small RPC `hidden_user_ids()`) | `discover/page.tsx` | M0 |
+| G15 | ✅ Done (M0) — Discover hides users who blocked me as well as users I blocked | `discover/page.tsx` | M0 |
 | G14 | Discover takes the 100 newest profiles and ranks them in JS — good matches outside those 100 are never shown | `discover/page.tsx` | M3 |

@@ -55,4 +55,64 @@ test.describe('signed-in flows', () => {
     await page.goto('/admin');
     await expect(page).toHaveURL(/discover/);
   });
+
+  test('onboarding shows friendly error instead of raw DB error text (AC4)', async ({ page }) => {
+    const tag = `err-${Date.now().toString(36)}`;
+    const email = `u-${tag}@e2e.hamrah.invalid`;
+    const res = await page.request.post('/api/test/login', {
+      data: { email },
+      headers: { 'x-e2e-secret': process.env.E2E_TEST_SECRET! },
+    });
+    expect(res.ok()).toBeTruthy();
+    const { token_hash } = await res.json();
+    await page.goto(`/auth/confirm?token_hash=${token_hash}`);
+    await page.waitForURL(/\/onboarding/);
+
+    await page.route('**/rest/v1/profiles*', async (route) => {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'new row for relation "profiles" violates check constraint', code: '23514' }),
+        });
+      } else {
+        await route.continue();
+      }
+    });
+
+    await page.getByLabel('اسم').fill(`تست ${tag}`);
+    await page.getByLabel('شهر').fill('روتردام');
+    await page.getByRole('button', { name: 'بعدی' }).click();
+    await page.getByRole('button', { name: 'زبان', exact: true }).click();
+    await page.getByRole('button', { name: 'پروژه', exact: true }).click();
+    await page.getByRole('button', { name: 'بعدی' }).click();
+    await page.getByRole('button', { name: 'شروع کنیم' }).click();
+
+    await expect(page.locator('p[role="alert"]')).toHaveText('ذخیره نشد، دوباره امتحان کن');
+    await expect(page.getByText(/violates check constraint/)).toHaveCount(0);
+  });
+
+  test('if B blocked A, B does not appear in A discover (AC5 / G15)', async ({ browser }) => {
+    const tag = Date.now().toString(36);
+    const a = await (await browser.newContext()).newPage();
+    const b = await (await browser.newContext()).newPage();
+    await login(a, `a-blk-${tag}`);
+    await login(b, `b-blk-${tag}`);
+
+    // Before block: A sees B on /discover
+    await a.goto('/discover');
+    await expect(a.getByText(`تست b-blk-${tag}`)).toBeVisible();
+
+    // B opens A's profile from /discover and blocks A
+    await b.goto('/discover');
+    await b.getByRole('link', { name: new RegExp(`تست a-blk-${tag}`) }).first().click();
+    await b.waitForURL(/\/u\//);
+    await b.getByRole('button', { name: 'گزارش یا مسدود کردن' }).click();
+    await b.getByRole('button', { name: new RegExp(`گزارش و مسدود کردن تست a-blk-${tag}`) }).click();
+    await expect(b.getByText('گزارش ثبت و کاربر مسدود شد.')).toBeVisible();
+
+    // After B blocks A: B does not appear in A's /discover
+    await a.goto('/discover');
+    await expect(a.getByText(`تست b-blk-${tag}`)).toHaveCount(0);
+  });
 });
