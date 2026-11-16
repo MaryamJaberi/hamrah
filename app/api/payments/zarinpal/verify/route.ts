@@ -25,6 +25,11 @@ export async function GET(req: Request) {
   }).catch(() => null);
   const json = await res?.json().catch(() => null);
   const code = json?.data?.code;
+  // No answer from Zarinpal (timeout, bad gateway): we do not know the outcome. Leave the payment
+  // pending so that reloading the callback can verify it again; marking it failed here would make
+  // a later successful verify a no-op while the user has paid.
+  // (A real refusal comes back as { data: [], errors: { code: -NN } } and is still marked failed below.)
+  if (code === undefined && json?.errors?.code === undefined) return fail();
   if (code === 100 || code === 101) {
     await fulfillPayment(pay.id);
     return NextResponse.redirect(`${appUrl()}/sessions?paid=1`);
