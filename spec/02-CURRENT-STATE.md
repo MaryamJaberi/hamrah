@@ -72,5 +72,5 @@ RPCs: `accept_request`, `start_free_mentorship`, `search_people`, helpers `is_ad
 | G11 | `meet.jit.si` limits embedded calls to 5 min | `.env` `NEXT_PUBLIC_JITSI_DOMAIN` | M6 (config) |
 | G12 | Connections cannot be ended / archived by users | `connections.status` | M1 |
 | G13 | `matchScore` can drop below the floor for low-rated users only via clamp; rating weight is ad hoc | `matching.ts` | M3 |
-| G15 | Discover hides only users *I* blocked; if B blocked A, A still sees B (RLS on `blocks` only exposes own rows). `search_people` is correct. Fix with an `is_blocked_between` filter (e.g. small RPC `hidden_user_ids()`) | `discover/page.tsx` | M0 |
+| G15 | ~~Discover hid only users *I* blocked; if B blocked A, A still saw B.~~ **Fixed 2026-11-17 (branch `claude/2026-11-17-m0-baseline`):** discover now reads the 100 newest people through `search_people` (two pages of 50, `p_sort: 'newest'`), which already filters blocks in both directions — no new SQL. E2E test added in `e2e/app.spec.ts`; it still needs one run against the test Supabase project (S0.1 AC3/AC5) | `discover/page.tsx` | M0 |
 | G14 | Discover takes the 100 newest profiles and ranks them in JS — good matches outside those 100 are never shown | `discover/page.tsx` | M3 |

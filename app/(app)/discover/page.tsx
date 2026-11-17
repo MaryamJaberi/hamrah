@@ -9,8 +9,14 @@ export default async function Discover() {
   const { supabase, user, profile: me } = await getSession();
   if (!user || !me) redirect('/onboarding');
 
-  const [{ data: others }, { data: incoming }, { data: outgoing }, { data: goals }, { data: blocks }, { data: conns }] = await Promise.all([
-    supabase.from('profiles').select('*').neq('id', user.id).eq('is_banned', false).order('created_at', { ascending: false }).limit(100),
+  // The 100 newest people come from search_people (two pages of 50, its cap) instead of a
+  // plain profiles query: that RPC already leaves out banned users and anyone with a block
+  // in EITHER direction, so someone who blocked me no longer shows up here (gap G15).
+  const newest = (offset: number) => supabase.rpc('search_people', { p_sort: 'newest', p_limit: 50, p_offset: offset });
+
+  const [{ data: page1 }, { data: page2 }, { data: incoming }, { data: outgoing }, { data: goals }, { data: blocks }, { data: conns }] = await Promise.all([
+    newest(0),
+    newest(50),
     supabase.from('requests').select('*, from:profiles!requests_from_user_fkey(*)').eq('to_user', user.id).eq('status', 'pending').order('created_at', { ascending: false }),
     supabase.from('requests').select('to_user,status').eq('from_user', user.id),
     supabase.from('goals').select('id,title').eq('user_id', user.id),
@@ -19,7 +25,10 @@ export default async function Discover() {
   ]);
 
   const hidden = new Set([...(blocks ?? []).map((b) => b.blocked_id), ...(conns ?? []).map((c) => (c.user_a === user.id ? c.user_b : c.user_a))]);
-  const ranked = ((others ?? []) as Profile[])
+  const seen = new Set<string>();
+  const others = [...((page1 ?? []) as Profile[]), ...((page2 ?? []) as Profile[])]
+    .filter((u) => (seen.has(u.id) ? false : (seen.add(u.id), true)));
+  const ranked = others
     .filter((u) => !hidden.has(u.id))
     .map((u) => ({ user: u, score: matchScore(me as Profile, u) }))
     .sort((a, b) => b.score - a.score)

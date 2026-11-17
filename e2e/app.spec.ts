@@ -50,6 +50,32 @@ test.describe('signed-in flows', () => {
     await expect(a.getByText('سلام از تست')).toBeVisible(); // realtime or initial load
   });
 
+  // G15 / S0.1 AC5: a block hides both people from each other's discover, not only the blocker's.
+  test('someone who blocked me does not appear in my discover', async ({ browser }) => {
+    const tag = Date.now().toString(36);
+    const a = await (await browser.newContext()).newPage();
+    const b = await (await browser.newContext()).newPage();
+    await login(b, `b${tag}`);
+    await login(a, `a${tag}`);
+
+    await a.goto('/discover');
+    const bOnDiscover = a.getByText(`تست b${tag}`).first();
+    // Discover shows the 30 best matches of the 100 newest people; on a crowded test database B may not be among them.
+    test.skip(!(await bOnDiscover.isVisible().catch(() => false)), 'B is not among A\'s suggestions on this test database');
+
+    await b.goto('/search');
+    await b.getByLabel('عبارت جستجو').fill(`تست a${tag}`);
+    await b.getByRole('button', { name: /جستجو/ }).click();
+    await b.getByTestId('search-result').first().click();
+    await b.getByRole('button', { name: 'گزارش یا مسدود کردن' }).click();
+    await b.getByRole('button', { name: /گزارش و مسدود کردن/ }).click();
+    await expect(b.getByText('گزارش ثبت و کاربر مسدود شد.')).toBeVisible();
+
+    await a.reload();
+    await expect(a.getByRole('heading', { name: 'کشف همراه' })).toBeVisible();
+    await expect(a.getByText(`تست b${tag}`)).toHaveCount(0);
+  });
+
   test('regular users cannot open admin', async ({ page }) => {
     await login(page);
     await page.goto('/admin');

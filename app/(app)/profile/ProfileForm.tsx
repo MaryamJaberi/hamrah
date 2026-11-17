@@ -27,7 +27,8 @@ export default function ProfileForm({ profile }: { profile: Profile }) {
       is_mentor: p.is_mentor, mentor_currency: p.mentor_currency, mentor_price: toMinor(price, p.mentor_currency),
       mentor_bio: p.mentor_bio?.trim() || null, mentor_topics: topics.split(/[,،]/).map((s) => s.trim()).filter(Boolean),
     }).eq('id', p.id);
-    setStatus(error ? 'ذخیره نشد: ' + error.message : 'ذخیره شد ✓');
+    if (error) console.error('profile: save failed', error);
+    setStatus(error ? 'ذخیره نشد، دوباره امتحان کن' : 'ذخیره شد ✓');
     router.refresh();
   }
 
