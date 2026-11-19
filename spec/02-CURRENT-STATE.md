@@ -56,6 +56,9 @@ RPCs: `accept_request`, `start_free_mentorship`, `search_people`, helpers `is_ad
 - Blocked users cannot request or message each other.
 - `/api/test/login` is inert unless `E2E_TEST_SECRET` is set; never set it in production.
 
+## Module MO «بریم بیرون» (added 2026-11-20, branch `mo-outings`)
+Migration `010_outings.sql` (independent of 004–009). Privacy invariants P1–P10 in `11-OUTINGS-SPEC.md` §2 are part of the security invariants above. SQL tests: `supabase/tests/010_outings_test.sql`.
+
 ## Gaps and known limitations (what v2+ must address)
 | # | Gap | Where it shows | Milestone |
 |---|---|---|---|

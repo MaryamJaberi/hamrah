@@ -17,6 +17,16 @@ Decisions the owner (Maryam) has not made yet. The agent must **not** decide the
 | Q11 | Bottom nav in v2: replace "هدف‌ها" with "جمع" (proposed) | Replace in M4 | M4 |
 | Q12 | Interests list: keep v1's 16 or expand per market? | Keep, add "نوشتن" and "کار اداری" | M3 |
 
+| Q13 | Must "women only" require ID verification (KYC)? | No; revisit in M5 | MO, M5 |
+| Q14 | Time zone used in the plan-confirmed system message | Europe/Amsterdam | MO |
+| Q15 | AI (Claude) interview for the outing profile instead of fixed questions? Costs per use + API key | Fixed questions | MO-2 |
+| Q16 | Minimum age for outings | 18 (birth year ≤ 2008) | MO |
+| Q17 | Hobbies in an open invite: filter or soft preference? | Soft preference | MO |
+| Q18 | Map tiles at launch: OSM public tiles (policy limits), MapTiler free tier, or self-hosted? | OSM now; MapTiler key before public launch | MO, M6 |
+
+## Resolved 2026-11-19
+- Google Maps is paid → module MO uses free OpenStreetMap (tiles, Overpass, Photon). Google/MapTiler keys are optional switches.
+
 ## Resolved 2026-10-30 (after agent read-through)
 - Group chats use `group_id` on messages/sessions/reviews (04), not a `group` connection kind.
 - `requests.kind` is `buddy | exchange` only; mentorship opens via /mentors and /u/[id].

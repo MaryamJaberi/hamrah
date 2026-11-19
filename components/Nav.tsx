@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const items = [
-  ['/discover', '🔍', 'کشف'], ['/goals', '🎯', 'هدف‌ها'], ['/sessions', '📅', 'جلسه‌ها'],
+  ['/discover', '🔍', 'کشف'], ['/out', '🌆', 'بیرون'], ['/goals', '🎯', 'هدف‌ها'], ['/sessions', '📅', 'جلسه‌ها'],
   ['/chat', '💬', 'چت'], ['/profile', '👤', 'من'],
 ] as const;
 

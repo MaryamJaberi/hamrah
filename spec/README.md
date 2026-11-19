@@ -15,6 +15,8 @@ Spec for building Hamrah v2 on top of the existing v1 code with an AI coding age
 | 07 | `07-USER-STORIES.md` | Stories with testable acceptance criteria, per milestone | en |
 | 08 | `08-TRUST-SAFETY.md` | Community rules, verification, safety controls, admin workflows, privacy | en |
 | 09 | `09-BUILD-PLAN.md` | Milestones M0–M6, per-milestone checklist, definition of done | en |
+| 10 | `10-OUTINGS.fa.md` | Module MO «بریم بیرون»: concept, privacy, matching, map, status | **fa** (source of truth) |
+| 11 | `11-OUTINGS-SPEC.md` | MO for developers: privacy invariants, data model, flows, stories + tests | en |
 | — | `OPEN-QUESTIONS.md` | Undecided points with defaults; agent appends here | en |
 | — | `PROMPTS.md` | **The exact prompts to paste into Antigravity, in order** | en |
 
@@ -26,4 +28,5 @@ Spec for building Hamrah v2 on top of the existing v1 code with an AI coding age
 
 ## Scope at a glance
 - **Built (v1):** OTP login (email/SMS), onboarding, goals, match-scored discover, search, requests, realtime chat, single-user focus room with Jitsi, reviews, report/block, KYC, free + paid mentorship (Stripe, Zarinpal), web/native push, admin console, data export/delete, Capacitor shell, Playwright + CI.
+- **Built (MO-1, branch `mo-outings`):** «بریم بیرون» — conversational outing profile, group plans with invite link + time/activity/place votes + free OSM map + icebreakers + realtime chat, open invites to nearby people, like-minded matching, mutual-reveal privacy.
 - **Next:** scheduling & reminders (M1) → shared realtime room & goal progress (M2) → skill exchange & matching v2 (M3) → group rooms & events (M4) → in-person safety & fa/en/nl (M5) → mentor payouts, monitoring, launch (M6).
