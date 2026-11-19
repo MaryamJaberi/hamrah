@@ -18,6 +18,7 @@ Next.js 14 (App Router) + Supabase + Tailwind، راست‌به‌چپ و موب
 | اعلان Web Push و Push بومی (FCM HTTP v1) | `lib/push.ts`, `components/PushToggle.tsx` |
 | کنسول ادمین: داشبورد، KYC، گزارش‌ها، کاربران، پرداخت‌ها | `app/admin/*` |
 | خروجی داده و حذف حساب | `app/api/account` |
+| «بریم بیرون»: پروفایل گفت‌وگویی، برنامهٔ گروهی با لینک دعوت و رأی وقت/کار/جا، نقشهٔ رایگان OpenStreetMap، یخ‌شکن، دعوت باز به آدم‌های نزدیک، حریم خصوصی دوطرفه | `app/(app)/out/*`, `lib/outings.ts`, `lib/places.ts`, `supabase/migrations/010_outings.sql` |
 | اپ موبایل با Capacitor | `capacitor.config.ts` |
 | تست E2E با Playwright + CI | `e2e/`, `.github/workflows/ci.yml` |
 

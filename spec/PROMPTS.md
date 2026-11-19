@@ -31,6 +31,16 @@ After my OK, implement, run typecheck, build, the e2e suite and the SQL tests, f
 ```
 Replace `M1` / branch name for each milestone: `m0-baseline`, `m1-scheduling`, `m2-shared-room`, `m3-exchange-matching`, `m4-together`, `m5-safety-i18n`, `m6-money-launch`.
 
+## P2-MO — Outings module «بریم بیرون» (already built as MO-1 on branch `mo-outings`)
+Use this to review or continue it in Antigravity:
+```
+Read spec/AGENTS.md, spec/10-OUTINGS.fa.md and spec/11-OUTINGS-SPEC.md, then the code listed in 11 §7.
+Check out branch mo-outings. Do not change migration 010 if it is merged; add 011_* instead.
+(1) Run supabase/tests/010_outings_test.sql against the e2e project and the e2e suite including e2e/outings.spec.ts.
+(2) Report any privacy invariant P1–P10 you can break as user B against user A.
+(3) Then implement MO-2 items from 11 §8 one at a time, starting with post-outing feedback. Show a plan first and wait for my OK.
+```
+
 ## P3 — Independent review (new conversation, after each milestone)
 ```
 You are a reviewer, not the author. Read spec/AGENTS.md, spec/02-CURRENT-STATE.md, spec/04-DATA-MODEL.md, spec/08-TRUST-SAFETY.md and the diff of branch mX-… against main.

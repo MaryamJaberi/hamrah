@@ -10,6 +10,7 @@ Work strictly in order. One milestone = one branch `m{n}-{slug}` = one PR. A mil
 | M3 | Exchange & matching v2 | skills, availability, time zone, request/connection kind `exchange`, `suggest_people` SQL, reason chips, search filters | 006 | M |
 | M4 | Together | groups (rooms/events), members, group chat, group sessions & reviews, `/together` hub, admin moderation, nav change | 007 | L |
 | M5 | Safety & i18n | safety card, phone requirement, safety check-ins, trusted contacts, rules acceptance, KYC image retention, `next-intl` fa/en/nl, Jalali/Gregorian | 008 | L |
+| MO | Outings «بریم بیرون» (independent module) | outing profile builder, group plans, open invites, matching, OSM venues, icebreakers — see `11-OUTINGS-SPEC.md`. **MO-1 built.** MO-2: reminders (after M1), safety check-in (after M5), feedback, recurring | 010 | L |
 | M6 | Money & launch | mentor slots & booking, Stripe Connect payouts, refunds, rate limiting, Sentry, PostHog, prod deploy, Capacitor Android release | 009 | L |
 
 ## Per-milestone checklist (agent must report each item)
