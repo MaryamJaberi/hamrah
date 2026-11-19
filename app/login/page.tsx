@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
@@ -14,16 +14,26 @@ export default function Login() {
   const [err, setErr] = useState('');
   const router = useRouter();
   const supabase = createClient();
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('e') === 'link')
+      setErr('لینک ورود کار نکرد (شاید منقضی شده یا در مرورگر دیگری باز شد). دوباره ایمیلت را بزن و لینک را در همین مرورگر باز کن.');
+  }, []);
 
   async function send() {
     setBusy(true); setErr('');
-    if (method === 'email') {
-      const { error } = await supabase.auth.signInWithOtp({ email: id.trim(), options: { shouldCreateUser: true } });
-      if (error) setErr(error.message); else setStep('code');
-    } else {
-      const res = await fetch('/api/auth/otp/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: id }) });
-      const json = await res.json();
-      if (!res.ok) setErr(json.error); else setStep('code');
+    try {
+      if (method === 'email') {
+        const { error } = await supabase.auth.signInWithOtp({
+          email: id.trim(), options: { shouldCreateUser: true, emailRedirectTo: `${window.location.origin}/auth/callback` },
+        });
+        if (error) setErr(error.message); else setStep('code');
+      } else {
+        const res = await fetch('/api/auth/otp/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: id }), signal: AbortSignal.timeout(20000) });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) setErr(json.error ?? 'ورود با موبایل فعلاً کار نمی‌کند؛ با ایمیل وارد شو.'); else setStep('code');
+      }
+    } catch {
+      setErr(method === 'phone' ? 'ورود با موبایل فعلاً کار نمی‌کند؛ با ایمیل وارد شو.' : 'ارتباط برقرار نشد؛ دوباره امتحان کن.');
     }
     setBusy(false);
   }
@@ -71,6 +81,9 @@ export default function Login() {
         </>
       ) : (
         <>
+          {method === 'email' && (
+            <p className="text-sm bg-primary-soft rounded-2xl p-3 mb-4">📩 ایمیلت را باز کن و روی <b>لینک ورود</b> بزن — در <b>همین مرورگر</b>. اگر به‌جای لینک یک کد ۶ رقمی آمد، اینجا بنویس.</p>
+          )}
           <label className="label" htmlFor="otp">کد ارسال‌شده به {id}</label>
           <input id="otp" className="input mb-4 text-center tracking-[.5em] text-2xl" dir="ltr" inputMode="numeric"
             autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
@@ -78,7 +91,7 @@ export default function Login() {
           <button className="mt-3 text-muted text-sm" onClick={() => { setStep('id'); setCode(''); }}>تغییر {method === 'email' ? 'ایمیل' : 'شماره'}</button>
         </>
       )}
-      {err && <p role="alert" className="text-warn text-sm mt-3">{err}</p>}
+ {err && <p role="alert" className="text-warn text-sm mt-3">{err}</p>}
     </main>
   );
 }

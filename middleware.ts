@@ -16,8 +16,14 @@ export async function middleware(req: NextRequest) {
     },
   });
 
-  const { data: { user } } = await supabase.auth.getUser();
   const path = req.nextUrl.pathname;
+  // an email login link that landed on the wrong page (e.g. the Site URL root) → finish it at /auth/callback
+  if ((req.nextUrl.searchParams.has('code') || req.nextUrl.searchParams.has('token_hash')) && path !== '/auth/callback' && path !== '/auth/confirm' && !path.startsWith('/api')) {
+    const u = new URL('/auth/callback', req.url);
+    req.nextUrl.searchParams.forEach((v, k) => u.searchParams.set(k, v));
+    return NextResponse.redirect(u);
+  }
+  const { data: { user } } = await supabase.auth.getUser();
   const redirect = (to: string) => {
     const r = NextResponse.redirect(new URL(to, req.url));
     res.cookies.getAll().forEach((c) => r.cookies.set(c));
