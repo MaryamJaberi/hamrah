@@ -74,6 +74,14 @@ Check out branch mo-outings. Do not change migration 010 if it is merged; add 01
 (3) Then implement MO-2 items from 11 §8 one at a time, starting with post-outing feedback. Show a plan first and wait for my OK.
 ```
 
+## P2-DH — «دورهمی» (built by Claude on branch `feature/dorehami`)
+After merging, the production database needs migration 020 once (Claude could not apply it to production):
+```
+Read spec/AGENTS.md and spec/12-DOREHAMI.fa.md. Apply supabase/migrations/020_dorehami.sql to the PRODUCTION
+Supabase project (it is idempotent; it needs 001–003 and the tables of 010). Then run supabase/tests/020_dorehami_test.sql
+against hamrah-dev only, and npx playwright test e2e/dorehami.spec.ts against npm start. Tell me the results. Change nothing else.
+```
+
 ## P3 — Independent review (new conversation, after each milestone)
 ```
 You are a reviewer, not the author. Read spec/AGENTS.md, spec/02-CURRENT-STATE.md, spec/04-DATA-MODEL.md, spec/08-TRUST-SAFETY.md and the diff of branch mX-… against main.
