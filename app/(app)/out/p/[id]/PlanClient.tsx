@@ -41,7 +41,11 @@ export default function PlanClient({ plan, me, initialMsgs, appUrl }: { plan: Pl
   };
 
   // ---------- invite ----------
-  const link = `${appUrl || (typeof window !== 'undefined' ? window.location.origin : '')}/out/join/${plan.invite_code}`;
+  // origin is read after mount: reading window during render made the server and browser HTML differ
+  // (React hydration errors #418/#423/#425) whenever NEXT_PUBLIC_APP_URL is not set
+  const [origin, setOrigin] = useState(appUrl || '');
+  useEffect(() => { if (!appUrl) setOrigin(window.location.origin); }, [appUrl]);
+  const link = `${origin}/out/join/${plan.invite_code}`;
   const [copied, setCopied] = useState(false);
   async function share() {
     const text = `بیا بریم بیرون: «${plan.title}» 🌆\n${link}`;

@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "seed": "node --env-file=.env.local scripts/seed.mjs",
     "e2e": "playwright test",
+    "bots": "node --env-file=.env.local scripts/bots.mjs",
     "e2e:ui": "playwright test --ui",
     "cap:sync": "npx cap sync",
     "cap:ios": "npx cap sync ios && npx cap open ios",
