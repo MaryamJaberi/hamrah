@@ -16,7 +16,10 @@ function ageRange(birth: number | null | undefined): string | undefined {
   return '۵۰+';
 }
 
-export function buildPrefill(name: string | null | undefined, op: Partial<OutingProfile> | null, ls: Partial<Lifestyle> | null) {
+type Saved = { name: string | null; data: Record<string, unknown> | null; public_fields: string[] | null } | null;
+
+// `saved` = the member's answers from their last «دورهمی» (021). They win over the profile and switch the form to quick mode.
+export function buildPrefill(name: string | null | undefined, op: Partial<OutingProfile> | null, ls: Partial<Lifestyle> | null, saved: Saved = null) {
   const d: Record<string, unknown> = {};
   if (op) {
     if (op.area_lat != null && op.area_lng != null) {
@@ -36,6 +39,9 @@ export function buildPrefill(name: string | null | undefined, op: Partial<Outing
     if (ls.smoking === 'yes' || ls.smoking === 'sometimes') d.smoke = 'smoke';
     if (ls.cannabis === 'yes' || ls.cannabis === 'sometimes') d.weed = 'use';
   }
+  if (saved?.data && Object.keys(saved.data).length) {
+    return { name: saved.name || name || '', data: { ...d, ...saved.data }, pub: saved.public_fields ?? [], saved: true };
+  }
   if (!name && !Object.keys(d).length) return null;
-  return { name: name ?? '', data: d };
+  return { name: name ?? '', data: d, saved: false };
 }

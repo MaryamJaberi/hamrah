@@ -265,6 +265,22 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     `;
     bindLoginLinks();
     if (USER) $("#c_org").value = USER.name || "";
+    // remembered answers can be forgotten any time
+    const hasLast = USER ? !!(PREFILL && PREFILL.saved) : !!store.get("dh_last");
+    if (hasLast) {
+      const box = document.createElement("div");
+      box.className = "card";
+      box.innerHTML = `<h2>🧠 جواب‌های یادم‌مانده</h2><p class="muted">${USER ? "جواب‌های دورهمی قبلی‌ات (به‌جز روزها) یادم مانده تا دفعهٔ بعد فقط روزها را بزنی." : "جواب‌هایت روی همین گوشی مانده تا دفعهٔ بعد سریع‌تر پر کنی."}</p><button class="btn line sm" id="dh_forget">فراموشش کن</button>`;
+      app.appendChild(box);
+      $("#dh_forget").onclick = async () => {
+        if (!confirm("جواب‌های ذخیره‌شده پاک شود؟ جواب‌هایی که در دورهمی‌ها داده‌ای سر جایشان می‌مانند.")) return;
+        try {
+          if (USER) { const { error } = await sb.from("dh_member_prefs").delete().eq("user_id", USER.id); if (error) throw error; if (PREFILL) { PREFILL.saved = false; PREFILL.data = {}; } }
+          try { localStorage.removeItem("dh_last"); } catch(e){}
+          box.remove(); toast("پاک شد");
+        } catch(e){ toast(errMsg(e)); }
+      };
+    }
     const opts = [];
     const addOpt = (d="", t="15:00") => { opts.push({d,t}); drawOpts(); };
     function drawOpts(){
@@ -354,16 +370,24 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     if (edit){
       try { const mine = await rpc("dh_mine", {p_code:CODE, p_edit:edit}); if (mine){ D = mine.data||{}; PUB = new Set(mine.public_fields||[]); NAME = mine.name; } } catch(e){}
     }
-    let prefilled = false;
-    if (!edit && PREFILL) { D = JSON.parse(JSON.stringify(PREFILL.data || {})); NAME = PREFILL.name || ""; prefilled = true; }
-    D.avail = D.avail || {};
+    // Remembered answers: a member's saved answers (server) or, for guests, this browser's last answers.
+    // With them the form opens in quick mode: name → days → review; every section stays one tap away.
+    let prefilled = false, quick = false;
+    const last = !USER ? store.get("dh_last") : null;
+    const seed = PREFILL || (last && last.data ? last : null);
+    if (!edit && seed) {
+      D = JSON.parse(JSON.stringify(seed.data || {})); NAME = seed.name || ""; prefilled = true;
+      quick = !!seed.saved;
+    }
+    D.avail = {...(edit ? D.avail : {})};
     const steps = [
       {k:"hi", t:"سلام 👋", draw: () => `
         <h1>${esc(M.title)}</h1>
         ${M.note?`<p>${esc(M.note)}</p>`:""}
         <p class="muted">${M.organizer_name?esc(M.organizer_name)+" دعوتت کرده. ":""}چند سؤال کوتاه می‌پرسم تا جا و ساعتی پیدا کنیم که برای همه خوب باشد. ${M.women_only?"<b>این دورهمی فقط برای خانم‌هاست.</b>":""}</p>
         <div class="okbox">🔒 زیر هر سؤال یک کلید هست: <b>«به بقیه نشان بده»</b>. اگر خاموش باشد، جوابت فقط به‌صورت بی‌نام در حساب‌ها می‌آید (مثلاً «۲ نفر گیاه‌خوارند») و اسمت کنارش نمی‌آید.</div>
-        ${prefilled?`<div class="note">✨ چند جواب را از پروفایل «همراه»ت پر کردم. هر کدام را خواستی عوض کن.</div>`:""}
+        ${quick?`<div class="okbox">✨ جواب‌های دفعهٔ قبلت را گذاشتم: مبدأ، وسیله، غذا، ترجیح‌ها و حریم خصوصی. فقط روزها را بزن؛ در صفحهٔ آخر هر بخش را خواستی با یک ضربه عوض کن.</div>`
+          : prefilled?`<div class="note">✨ چند جواب را از پروفایل «همراه»ت پر کردم. هر کدام را خواستی عوض کن.</div>`:""}
         <label class="f">اسمت (یا اسمی که بچه‌ها می‌شناسند)</label>
         <input type="text" id="f_name" maxlength="40" value="${esc(NAME)}" placeholder="مثلاً سارا">`,
         read: () => { NAME = $("#f_name").value.trim(); if (!NAME) return "اسمت را بنویس 🙂"; }},
@@ -515,15 +539,22 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           if (!v) continue;
           (PUB.has(groupOf(k)) ? pub : priv).push(`<div class="kv"><b>${LABEL[k]}:</b> ${esc(v)}</div>`);
         }
+        const SECT = [["origin","📍 مبدأ"],["modes","🚆 وسیله"],["avail","📅 روزها"],["activities","✨ کار و بودجه"],["diet","🍽️ غذا"],["life","🍷 الکل و سیگار"],["more","🧡 چیزهای دیگر"],["me","🪪 از خودت"]];
         return `<h2>✅ آماده است، ${esc(NAME)}</h2>
+          <div class="chips" style="margin:6px 0 4px">${SECT.map(([k,l])=>`<span class="chip" data-jump="${k}">✏️ ${l}</span>`).join("")}</div>
           <h3>👀 بقیه این‌ها را با اسمت می‌بینند</h3>${pub.join("") || '<p class="tiny">هیچ چیز (فقط اسمت)</p>'}
           <h3>🔒 خصوصی (فقط بی‌نام در حساب‌ها)</h3>${priv.join("") || '<p class="tiny">هیچ چیز</p>'}
-          <p class="tiny" style="margin-top:10px">برای عوض کردن، «قبلی» را بزن. بعداً هم می‌توانی فرمت را ویرایش یا پاک کنی.</p>`; }},
+          <p class="tiny" style="margin-top:10px">برای عوض کردن هر بخش، دکمه‌اش را بالا بزن. بعداً هم می‌توانی فرمت را ویرایش یا پاک کنی.${USER?" این جواب‌ها برای دورهمی بعدی‌ات هم یادم می‌ماند (به‌جز روزها).":""}</p>`; }},
     ];
     const GROUPS = {origin:["origin"], modes:["modes","seats","max_min"], avail:["avail","until","night_alone"], activities:["activities","budget"],
       diet:["diet","allergy","dislikes"], life:["alcohol","smoke","weed"], more:["langs","bring","photo","quiet","access"],
       age:["age"], job:["job"], contact:["contact"]};
     function groupOf(k){ for (const [g,ks] of Object.entries(GROUPS)) if (ks.includes(k)) return g; return k; }
+    if (!edit && seed && seed.pub) PUB = new Set(seed.pub.map(groupOf));   // saved field list → toggle groups
+    const idx = k => steps.findIndex(x => x.k === k);
+    // quick mode path: hi → avail → review
+    const nextIdx = (cur) => quick ? (steps[cur].k === "hi" ? idx("avail") : steps[cur].k === "avail" ? idx("review") : cur + 1) : cur + 1;
+    const prevIdx = (cur) => quick ? (steps[cur].k === "review" ? idx("avail") : steps[cur].k === "avail" ? idx("hi") : cur - 1) : cur - 1;
     function visT(g, label){ return `<div class="vis ${PUB.has(g)?"on":""}" data-vis="${g}"><span class="sw"></span><span>${label}</span></div>`; }
     function optM(k,e,b,s){ return `<div class="opt ${(D.modes||[]).includes(k)?"on":""}" data-mode="${k}"><span class="e">${e}</span><div><b>${b}</b><span>${s}</span></div></div>`; }
     function tri(k, L, emo){ return `<div class="opts">${Object.entries(L).map(([v,l],i)=>`<div class="opt ${D[k]===v?"on":""}" data-${k}="${v}"><span class="e">${emo[i]}</span><div><b>${l.replace("می‌دهد","می‌دهم").replace("می‌کند","می‌کند").replace("خودش","خودم").replace("برایش","برایم").replace("اذیتش","اذیتم").replace("کنارش","کنارم").replace("ندارد","ندارم").replace("می‌نوشد","می‌نوشم").replace("می‌کشد","می‌کشم").replace("مصرف می‌کند","مصرف می‌کنم")}</b></div></div>`).join("")}</div>`; }
@@ -544,8 +575,8 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       const s = steps[i];
       app.innerHTML = topbar() + `
         <header class="top"><span class="logo">🌿</span><div><b>${esc(M.title)}</b><small>${M.count?fa(M.count)+" نفر تا الان پر کرده‌اند":"اولین نفری 🎈"}</small></div></header>
-        <div class="step-h"><span>${esc(s.t)}</span><span>${fa(i+1)} از ${fa(steps.length)}</span></div>
-        <div class="prog"><i style="width:${(i+1)/steps.length*100}%"></i></div>
+        <div class="step-h"><span>${esc(s.t)}</span><span>${quick ? `${fa([idx("hi"),idx("avail"),idx("review")].indexOf(i)+1 || 2)} از ۳ · سریع` : `${fa(i+1)} از ${fa(steps.length)}`}</span></div>
+        <div class="prog"><i style="width:${quick ? (([idx("hi"),idx("avail"),idx("review")].indexOf(i)+1 || 2)/3*100) : (i+1)/steps.length*100}%"></i></div>
         <div class="card">${s.draw()}</div><div id="f_err"></div>
         ${i===0 ? `<div class="row"><a href="/d/${CODE}?tab=result" class="btn line sm">${edit?"دیدن نتیجه بدون تغییر":"اول فقط نتیجه را ببینم"}</a></div>`:""}
         <div class="bar"><div class="in">
@@ -555,14 +586,16 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       root.querySelectorAll("[data-vis]").forEach(el => el.onclick = () => { const g = el.dataset.vis; PUB.has(g) ? PUB.delete(g) : PUB.add(g); el.classList.toggle("on", PUB.has(g)); });
       s.after && s.after();
       $("#f_next").onclick = next;
-      if ($("#f_back")) $("#f_back").onclick = () => { s.read && s.read(); i--; draw(); scrollTo(0,0); };
+      if ($("#f_back")) $("#f_back").onclick = () => { s.read && s.read(); i = prevIdx(i); draw(); scrollTo(0,0); };
+      // review: jump to a section, then walk the normal path back to review
+      root.querySelectorAll("[data-jump]").forEach(el => el.onclick = () => { quick = false; i = idx(el.dataset.jump); draw(); scrollTo(0,0); });
       const inp = app.querySelector("input[type=text]"); if (inp && i===0 && !NAME) inp.focus();
     }
     async function next(){
       const s = steps[i];
       const err = s.read && s.read();
       if (err) { $("#f_err").innerHTML = `<div class="err">${esc(err)}</div>`; return; }
-      if (i < steps.length-1) { i++; draw(); scrollTo(0,0); return; }
+      if (i < steps.length-1) { i = nextIdx(i); draw(); scrollTo(0,0); return; }
       const b = $("#f_next"); b.disabled = true; b.innerHTML = `<span class="spin"></span>`;
       const pubFields = []; for (const [g,ks] of Object.entries(GROUPS)) if (PUB.has(g)) pubFields.push(...ks);
       ["about","hobbies","question"].forEach(k => pubFields.push(k));  // these are only asked to be shared
@@ -570,6 +603,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       try {
         const r = await rpc("dh_respond", {p_code:CODE, p_edit:edit||null, p_name:NAME, p_data:clean, p_public:pubFields});
         store.set("dh_"+CODE, {...(store.get("dh_"+CODE)||{}), title:M.title, edit:r.edit_token, name:NAME});
+        if (!USER) { const keep = {...clean}; delete keep.avail; store.set("dh_last", {name:NAME, data:keep, pub:pubFields, saved:true}); }
         toast("ثبت شد ✓"); go(`/d/${CODE}?tab=result`);
       } catch(e){ $("#f_err").innerHTML = `<div class="err">${esc(errMsg(e))}</div>`; b.disabled=false; b.textContent="دوباره امتحان کن"; }
     }
