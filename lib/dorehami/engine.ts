@@ -751,7 +751,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   /* ============ venue finder (OpenStreetMap, free) ============ */
   async function findVenues(hub, A){
     const box = $("#venues");
-    box.innerHTML = `<div class="card"><h2>🍽️ جاهای نزدیک ایستگاه ${esc(hub.fa)}</h2><p class="muted"><span class="spin"></span> دارم در نقشهٔ آزاد (OpenStreetMap) می‌گردم…</p></div>`;
+    box.innerHTML = `<div class="card"><h2>🍽️ جاهای نزدیک ایستگاه ${esc(hub.fa)}</h2><p class="muted"><span class="spin"></span> دارم در نقشهٔ آزاد (OpenStreetMap) می‌گردم… بار اول ممکن است تا نیم دقیقه طول بکشد.</p></div>`;
     box.scrollIntoView({behavior:"smooth", block:"start"});
     const needHalal = !!A.dietC.halal, needVeg = !!(A.dietC.vegetarian || A.dietC.vegan), needVegan = !!A.dietC.vegan;
     const q = `[out:json][timeout:25];(nwr(around:1100,${hub.lat},${hub.lng})["amenity"~"^(cafe|restaurant)$"]["name"];);out center 150;`;
@@ -764,14 +764,24 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         <a class="btn line sm" target="_blank" rel="noopener" href="https://9292.nl/">🚆 مسیر با 9292</a>
       </div>`;
     let els = [];
-    for (const ep of ["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter"]) {
+    // 1) our server (cached, three mirrors, Photon fallback)  2) straight from the browser as a last try
+    try {
+      const ac = new AbortController(); const tm = setTimeout(() => ac.abort(), 40000);
+      const r = await fetch(`/api/d/places?lat=${hub.lat}&lng=${hub.lng}`, {signal:ac.signal});
+      clearTimeout(tm);
+      if (r.ok) els = ((await r.json()).venues || []).map(v => ({lat:v.lat, lon:v.lng, tags:{name:v.name, amenity:v.amenity, cuisine:v.cuisine,
+        "diet:halal":v.halal, "diet:vegetarian":v.vegetarian, "diet:vegan":v.vegan, wheelchair:v.wheelchair, outdoor_seating:v.outdoor,
+        website:v.website, "addr:street":v.street}}));
+    } catch(e){}
+    if (!els.length && !dead) {
       try {
-        const ac = new AbortController(); const tm = setTimeout(() => ac.abort(), 12000);
-        const r = await fetch(ep, {method:"POST", body:"data="+encodeURIComponent(q), headers:{"Content-Type":"application/x-www-form-urlencoded"}, signal:ac.signal});
+        const ac = new AbortController(); const tm = setTimeout(() => ac.abort(), 25000);
+        const r = await fetch("https://overpass-api.de/api/interpreter?data="+encodeURIComponent(q), {signal:ac.signal});
         clearTimeout(tm);
-        if (r.ok) { els = (await r.json()).elements || []; break; }
+        if (r.ok) els = (await r.json()).elements || [];
       } catch(e){}
     }
+    if (dead) return;
     const MIDEAST = /persian|iranian|turkish|lebanese|middle_eastern|moroccan|kebab|arab|afghan|syrian|kurdish|falafel|halal/i;
     const scored = els.map(e => {
       const t = e.tags || {}; const lat = e.lat || (e.center||{}).lat, lng = e.lon || (e.center||{}).lon;
@@ -792,7 +802,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     }).filter(x => x.name).sort((a,b) => b.s - a.s).slice(0, 12);
     const header = `<h2>🍽️ پیشنهاد جا نزدیک ایستگاه ${esc(hub.fa)}</h2>
       <p class="tiny">${needHalal?"حلال · ":""}${needVeg?"گیاهی · ":""}${A.noAlcPlace?"کافه/رستوران به‌جای بار · ":""}${A.access?"بدون پله · ":""}مرتب‌شده با نیازهای جمع</p>`;
-    if (!scored.length) { box.innerHTML = `<div class="card">${header}<div class="note">نقشهٔ آزاد الان جواب نداد. با این دکمه‌ها در گوگل‌مپ بگرد:</div>${quick}</div>`; return; }
+    if (!scored.length) { box.innerHTML = `<div class="card">${header}<div class="note">الان جایی پیدا نشد (سرویس نقشهٔ آزاد شلوغ بود). چند دقیقهٔ دیگر دوباره «پیدا کردن جا» را بزن، یا با این دکمه‌ها در گوگل‌مپ بگرد:</div>${quick}</div>`; return; }
     box.innerHTML = `<div class="card">${header}
       ${scored.map(v => `<div class="venue"><div class="row"><b class="grow">${esc(v.name)}</b><span class="tiny">${fa(Math.round(v.d*12+1))} دقیقه پیاده</span></div>
         <div>${v.tags.map(t=>`<span class="pill ${/حلال|گیاهی|وگان|بدون پله/.test(t)?"g":""}">${esc(t)}</span>`).join("")}${v.cuisine?`<span class="tiny ltr"> ${esc(v.cuisine.replace(/_/g," "))}</span>`:""}</div>
