@@ -15,7 +15,8 @@ const MIRRORS = [
   'https://overpass.kumi.systems/api/interpreter',
 ];
 
-export async function venuesNear(lat: number, lng: number, radius = 1100): Promise<{ venues: Venue[]; source: string }> {
+export async function venuesNear(lat: number, lng: number, radius = 1100): Promise<{ venues: Venue[]; source: string; tried: string[] }> {
+  const tried: string[] = [];
   const q = `[out:json][timeout:25];nwr(around:${radius},${lat},${lng})["amenity"~"^(cafe|restaurant)$"]["name"];out center tags 150;`;
   for (const ep of MIRRORS) {
     try {
@@ -24,7 +25,7 @@ export async function venuesNear(lat: number, lng: number, radius = 1100): Promi
         headers: { 'User-Agent': 'Hamrah/1.0 (dorehami; contact via github.com/MaryamJaberi)' },
         next: { revalidate: 60 * 60 * 6 }, signal: AbortSignal.timeout(20000),
       });
-      if (!res.ok) continue;
+      if (!res.ok) { tried.push(`${new URL(ep).host}: ${res.status}`); continue; }
       const j = await res.json();
       const venues: Venue[] = (j.elements ?? []).map((e: any) => {
         const t = e.tags ?? {};
@@ -35,10 +36,11 @@ export async function venuesNear(lat: number, lng: number, radius = 1100): Promi
           wheelchair: t.wheelchair, outdoor: t.outdoor_seating, osm: `${e.type}/${e.id}`,
         };
       }).filter((v: Venue) => v.name && v.lat && v.lng);
-      if (venues.length) return { venues, source: 'overpass' };
-    } catch { /* next mirror */ }
+      if (venues.length) return { venues, source: 'overpass', tried };
+      tried.push(`${new URL(ep).host}: empty`);
+    } catch (e) { tried.push(`${new URL(ep).host}: ${(e as Error).name}`); }
   }
-  return { venues: await photon(lat, lng), source: 'photon' };
+  return { venues: await photon(lat, lng), source: 'photon', tried };
 }
 
 async function photon(lat: number, lng: number): Promise<Venue[]> {
