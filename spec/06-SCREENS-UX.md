@@ -21,6 +21,13 @@ Direction: `dir="rtl"` for `fa`, `ltr` for `en`/`nl` (set on `<html>` from local
 
 Tone: informal Persian ("تو"), short, encouraging. Never shame missed sessions; say "این هفته هنوز جلسه‌ای نداشتی — یکی بذاریم؟".
 
+## Visual designs (Nov 2026)
+Mockups for the screens that are not built yet live on one design canvas: https://claude.ai/artifact/BySbBKsKtPxbcyF3czEths
+- Row 1, M1–M2: Sessions (upcoming + streak), schedule form, shared room, wrap-up sheet.
+- Row 2, M4–M5: Together hub (events/rooms), event detail with safety card, create room/event, safety & rules (+ trusted contacts).
+- Row 3, MO-2: reminder + "همه‌چیز خوبه؟" safety check-in, post-outing feedback, monthly recurring plan.
+They use the v1 tokens above and Vazirmatn. Two deliberate differences from v1: icons are line SVGs (not emoji), and avatars are a coloured circle with the first letter. Build from these; where a mockup and this spec disagree, the spec wins and the mockup gets fixed.
+
 ## Navigation (bottom bar, 5 items)
 v1: کشف · هدف‌ها · جلسه‌ها · چت · من
 v2 (M4): **کشف · جلسه‌ها · جمع · چت · من** — goals move into "من" as a tab and into the session/wrap-up flow; "جمع" = rooms + events. Badge on چت for unread, on کشف for incoming requests.
