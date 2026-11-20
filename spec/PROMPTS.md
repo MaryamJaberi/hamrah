@@ -4,6 +4,39 @@ Open the `hamrah` folder in Antigravity (the `spec/` folder must be inside it). 
 
 ---
 
+## NOW (Nov 2026) — the order to paste things
+Already done by Claude: production database + Vercel production settings, migrations 001–011, 8 test bots on `hamrah-dev`,
+`npm run bots` (40 API checks) and `e2e/bots.spec.ts` (every page as a bot, mobile + desktop), designs for every screen not yet built:
+https://claude.ai/artifact/BySbBKsKtPxbcyF3czEths
+
+**Antigravity, once on your computer:** add `BOT_PASSWORD=…` (ask Claude for it, never commit it) to `.env.local`, then:
+```
+git pull. Read spec/AGENTS.md. Run: npm install, npm run typecheck, npm run build, npm run bots, and
+npx playwright test e2e/bots.spec.ts e2e/public.spec.ts against npm start. Tell me the numbers. Change nothing.
+```
+
+**Antigravity, M1 (scheduled sessions):**
+```
+Implement Milestone M1 from spec/09-BUILD-PLAN.md with every M1 story in spec/07-USER-STORIES.md.
+Follow spec/AGENTS.md. Branch: feature/m1-scheduling. New migration 012_*, never edit old ones.
+Screens: copy the layout of the artboards "جلسه‌ها — پیش رو (M1)" and "پیشنهاد جلسه (M1)" from spec/06-SCREENS-UX.md §Visual designs,
+using the existing classes in app/globals.css (.card .btn .chip …). Icons: line SVG, not emoji.
+Tests: add M1 scenarios to scripts/bots.mjs (bot3 proposes a weekly session to bot8; bot8 accepts; a stranger cannot see it)
+and to e2e/bots.spec.ts. Show me a plan first and wait for my OK. At the end all of: typecheck, build, npm run bots, e2e must pass.
+```
+Then the same prompt with M2 (artboards "اتاق مشترک (M2)", "جمع‌بندی و نظر (M2)"), M4 ("جمع…", "جزئیات رویداد…", "ساختن رویداد"),
+M5 ("ایمنی و قانون‌ها") and MO-2 (the three «بریم بیرون» artboards). One milestone per conversation; after each, run P3 in a new conversation.
+
+**Google AI Studio (only for trying Google Maps, not for the app code):**
+```
+Build a single-page prototype: given a centre (lat,lng) and an activity in Persian (قهوه، شام، پیاده‌روی…),
+call Places API (New) Nearby Search and show 8 places on a Google map with name, rating and an "add to plan" button
+that prints {name,address,lat,lng,url,provider:"google",kind} as JSON. RTL, Vazirmatn font. Use my API key from the environment.
+```
+If you like the result, give the JSON shape to Claude and it will plug it into lib/places.ts behind the existing OSM fallback.
+
+---
+
 ## P0 — Setup (once, you do this by hand)
 1. In Supabase create two projects: `hamrah-dev` and `hamrah-e2e`. Run migrations `001…003` in both (SQL editor, in order).
 2. `copy .env.local.example .env.local` and fill the Supabase URL/keys of `hamrah-dev`. Keep `SMS_DEV_LOG=true`.
