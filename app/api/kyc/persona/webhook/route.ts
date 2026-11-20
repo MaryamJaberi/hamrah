@@ -25,6 +25,7 @@ export async function POST(req: Request) {
   const status = s === 'approved' ? 'approved' : ['declined', 'failed', 'expired'].includes(s) ? 'rejected' : 'pending';
   await admin().from('kyc_submissions').upsert(
     { user_id: userId, kind: 'persona', persona_inquiry_id: inquiryId, status, reviewed_at: status === 'pending' ? null : new Date().toISOString() },
-    { onConflict: 'persona_inquiry_id' });
+    // Webhooks can arrive out of order: a late "pending" event must not overwrite a final decision.
+    { onConflict: 'persona_inquiry_id', ignoreDuplicates: status === 'pending' });
   return NextResponse.json({ ok: true });
 }
