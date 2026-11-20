@@ -131,6 +131,15 @@ const scenarios = {
   },
 };
 
+// Start clean: every bot leaves (or, as organizer, cancels) the plans left over from earlier runs,
+// so "not together yet" checks hold. Plans and invites are rate-limited (10 plans / 3 invites a day per bot);
+// to run more often, clear old bot data with supabase/seed/bots-reset.sql on the TEST database.
+for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) {
+  const b = await bot(n);
+  const { data: ms } = await b.db.from('outing_plan_members').select('plan_id').eq('user_id', b.id).eq('status', 'joined');
+  for (const m of ms ?? []) await b.db.rpc('leave_outing_plan', { p_plan: m.plan_id });
+}
+
 for (const [name, fn] of Object.entries(scenarios)) {
   if (only && !name.includes(only)) continue;
   console.log(`\n▶ ${name}`);
