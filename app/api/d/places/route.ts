@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { venuesNear } from '@/lib/dorehami/venues';
 
+export const preferredRegion = 'fra1'; // close to the Netherlands and to the European OSM servers
+export const maxDuration = 60;
+
 // Public (guests use «دورهمی» without an account). Only accepts coordinates inside the Netherlands/Belgium box,
 // rounded to ~100 m so every visitor of the same hub hits the same cache entry.
 export async function GET(req: Request) {
