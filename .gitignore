@@ -8,3 +8,13 @@ playwright-report
 test-results
 *.tsbuildinfo
 next-env.d.ts
+
+# کلید امضا و خروجی ساخت اندروید — هرگز وارد مخزن نشوند
+*.keystore
+*.jks
+release.key
+release.crt
+key.properties
+*.apk
+*.aab
+*.idsig
