@@ -26,7 +26,7 @@ export default function Onboarding() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return router.replace('/login');
     const { error } = await supabase.from('profiles').insert({ id: user.id, ...f, name: f.name.trim(), city: f.city.trim() || 'آنلاین' });
-    if (error) { setErr(error.message); setBusy(false); return; }
+    if (error) { console.error('onboarding: profile insert failed', error); setErr('ذخیره نشد، دوباره امتحان کن'); setBusy(false); return; }
     await supabase.from('goals').insert({ user_id: user.id, title: `تمرین ${f.interests[0]}`, category: f.interests[0], mode: f.mode });
     router.replace('/discover');
     router.refresh();

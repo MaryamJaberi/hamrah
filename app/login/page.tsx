@@ -19,7 +19,7 @@ export default function Login() {
     setBusy(true); setErr('');
     if (method === 'email') {
       const { error } = await supabase.auth.signInWithOtp({ email: id.trim(), options: { shouldCreateUser: true } });
-      if (error) setErr(error.message); else setStep('code');
+      if (error) { console.error('login: send code failed', error); setErr(error.status === 429 ? 'چند بار پشت‌سرهم درخواست دادی؛ کمی بعد دوباره امتحان کن' : 'کد فرستاده نشد، دوباره امتحان کن'); } else setStep('code');
     } else {
       const res = await fetch('/api/auth/otp/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: id }) });
       const json = await res.json();
@@ -38,7 +38,7 @@ export default function Login() {
       const json = await res.json();
       if (!res.ok) { setErr(json.error); setBusy(false); return; }
       const { error } = await supabase.auth.verifyOtp({ token_hash: json.token_hash, type: 'email' });
-      if (error) { setErr(error.message); setBusy(false); return; }
+      if (error) { console.error('login: session exchange failed', error); setErr('ورود کامل نشد، دوباره امتحان کن'); setBusy(false); return; }
     }
     router.replace('/discover');
     router.refresh();
