@@ -851,15 +851,15 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     app.innerHTML = topbar() + `
       <div class="card">
         <h1>✨ یک دورهمی بساز</h1>
-        <p class="muted" style="margin-bottom:12px;font-size:13.5px">ایونت یا قراری که در ذهن داری را بساز تا بقیه بگویند کِی و کجا می‌توانند، یا قرارهای دوستان را ببین:</p>
+        <p class="muted" style="margin-bottom:14px;font-size:13px">قراری که دوست داری را ثبت کن تا دوستانت زمان و مکانشان را هماهنگ کنند:</p>
 
         <div class="seg" style="margin-bottom:14px">
           <button type="button" id="mode_create_tab" class="on">✨ ساخت ایونت</button>
-          <button type="button" id="mode_find_tab">🔍 پیدا کردن ایونت ${mine.length ? `<span style="opacity:0.75;font-size:12px">(${fa(mine.length)})</span>` : ""}</button>
+          <button type="button" id="mode_find_tab">🔍 پیدا کردن ایونت ${mine.length ? `<span class="badge" style="background:#e8e2fa;color:var(--p);padding:1px 7px;border-radius:10px;font-size:11.5px;margin-right:4px">${fa(mine.length)}</span>` : ""}</button>
         </div>
 
         <div id="create_pane">
-          <div style="margin-bottom:12px">
+          <div style="margin-bottom:14px">
             <label class="f" style="margin-top:2px;font-weight:700">موضوع یا ایدهٔ قرار چیه؟</label>
             <input type="text" id="c_title" maxlength="80" placeholder="مثلاً: کافه و گپ، دویدن صبحگاهی، بردگیم…" style="font-size:15px;padding:10px 12px">
             <div class="quick-ideas" id="c_idea_chips">
@@ -869,29 +869,32 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             </div>
           </div>
 
-          <div class="row" style="gap:10px;margin-bottom:12px;align-items:flex-end;flex-wrap:wrap">
+          <div class="row" style="gap:10px;margin-bottom:14px;align-items:flex-end;flex-wrap:wrap">
             <div style="flex:1;min-width:130px">
-              <label class="f" style="margin-top:0">اسم تو (برگزارکننده)</label>
-              <input type="text" id="c_org" maxlength="40" placeholder="مثلاً مریم" value="${esc(myName)}">
+              <label class="f" style="margin-top:0">برگزارکننده</label>
+              <input type="text" id="c_org" maxlength="40" placeholder="مثلاً مریم" value="${esc(myName)}" style="height:42px">
             </div>
             <div style="flex:1.4;min-width:170px">
-              <label class="f" style="margin-top:0">نوع قرار</label>
-              <div class="seg sm" style="margin:0">
-                <button type="button" id="c_tgt_group" class="on">👥 چندنفره (گروهی)</button>
-                <button type="button" id="c_tgt_pair">👯‍♀️ دونفره (۱ به ۱)</button>
+              <label class="f" style="margin-top:0">تعداد هم‌پایان</label>
+              <div class="seg sm" style="margin:0;height:42px;display:flex;align-items:center">
+                <button type="button" id="c_tgt_group" class="on" style="height:34px;display:flex;align-items:center;justify-content:center">👥 گروهی</button>
+                <button type="button" id="c_tgt_pair" style="height:34px;display:flex;align-items:center;justify-content:center">👯‍♀️ دونفره (۱ به ۱)</button>
               </div>
             </div>
           </div>
 
-          <div style="margin-bottom:12px">
+          <div style="margin-bottom:14px">
             <label class="f" style="margin-top:0">زمان‌بندی دورهمی</label>
             <div class="seg sm" style="margin:0">
-              <button type="button" id="seg_open" class="on">🙋‍♀️ زمان شناور (بقیه ساعات آزادشان را می‌گویند)</button>
-              <button type="button" id="seg_fixed">📅 با روز و ساعت مشخص</button>
+              <button type="button" id="seg_open" class="on">🙋‍♀️ زمان شناور (پیشنهادی)</button>
+              <button type="button" id="seg_fixed">📅 روز و ساعت مشخص</button>
+            </div>
+            <div class="tiny" style="color:var(--muted);margin-top:4px" id="c_timing_hint">
+              دوستان ساعت‌های آزادشان را می‌گویند تا سیستم بهترین زمان مشترک را پیدا کند.
             </div>
           </div>
 
-          <div id="c_fixed_box" style="display:none;margin-bottom:12px;padding:12px;background:#f8f7fc;border:1px solid #e7e2f5;border-radius:14px">
+          <div id="c_fixed_box" style="display:none;margin-bottom:14px;padding:12px;background:#f8f7fc;border:1px solid #e7e2f5;border-radius:14px">
             <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
               <b style="font-size:13px">📅 تاریخ و ساعت‌های انتخابی:</b>
               <span class="tiny">می‌توانی چند گزینه بدهی تا بهترین انتخاب شود</span>
@@ -900,18 +903,21 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             <button class="btn ghost sm" id="c_add" style="margin-top:4px">+ یک تاریخ دیگر</button>
           </div>
 
-          <details style="margin-bottom:12px;background:#fbfaff;padding:8px 12px;border-radius:12px;border:1px solid #eeeaf8">
-            <summary class="tiny" style="cursor:pointer;color:var(--muted);font-weight:600">+ توضیح اختیاری یا فقط برای خانم‌ها…</summary>
-            <div style="margin-top:8px">
-              <input type="text" id="c_note" maxlength="300" placeholder="توضیح کوتاه (اختیاری): مثلاً صبح‌ها قبل از کار در پارک…" style="margin-bottom:6px">
+          <details style="margin-bottom:14px;background:#faf9fe;border-radius:12px;border:1.5px dashed #ded7f2;padding:9px 12px">
+            <summary style="cursor:pointer;color:var(--p);font-size:13px;font-weight:700;user-select:none;list-style:none;display:flex;align-items:center;justify-content:space-between">
+              <span>⚙️ تنظیمات بیشتر (توضیح دلخواه، فقط خانم‌ها)</span>
+              <span style="font-size:11px;opacity:0.7">▼</span>
+            </summary>
+            <div style="margin-top:10px;padding-top:8px;border-top:1px solid #eeeaf8">
+              <input type="text" id="c_note" maxlength="300" placeholder="توضیح کوتاه (اختیاری): مثلاً صبح‌ها قبل از کار در پارک…" style="margin-bottom:8px">
               <div class="opt" id="c_wo"><span class="e">👩</span><div><b>فقط برای خانم‌ها</b></div></div>
             </div>
           </details>
 
           <div id="c_err"></div>
-          <div class="row" style="gap:8px;margin-top:10px">
-            <button class="btn grow" id="c_go_open" style="font-size:15px;padding:12px 18px">🚀 ساخت قرار و دریافت لینک اشتراک ✨</button>
-            <button class="btn line sm" id="c_go" style="white-space:nowrap">📅 با روز و ساعت مشخص</button>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px">
+            <button class="btn" id="c_go_open" style="font-size:15px;padding:12px 16px;width:100%;font-weight:800;justify-content:center">🚀 ساخت قرار و دریافت لینک اشتراک ✨</button>
+            <button class="btn line sm" id="c_go" style="width:100%;font-size:13px;padding:8px;justify-content:center;color:var(--muted);border-color:#ded7f2">📅 یا با روز و ساعت مشخص</button>
           </div>
         </div>
 
@@ -1066,6 +1072,11 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       openSchedule = isOpen;
       $("#seg_open")?.classList.toggle("on", isOpen);
       $("#seg_fixed")?.classList.toggle("on", !isOpen);
+      if ($("#c_timing_hint")) {
+        $("#c_timing_hint").textContent = isOpen
+          ? "دوستان ساعت‌های آزادشان را می‌گویند تا سیستم بهترین زمان مشترک را پیدا کند."
+          : "تاریخ و ساعت‌های مشخصی که پیشنهاد داری را تعیین کن تا دوستان رأی دهند.";
+      }
       if ($("#c_open_note")) $("#c_open_note").style.display = isOpen ? "block" : "none";
       if ($("#c_fixed_box")) $("#c_fixed_box").style.display = isOpen ? "none" : "block";
       updateTargetUI(currentTarget);
