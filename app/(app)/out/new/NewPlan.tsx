@@ -52,19 +52,34 @@ export default function NewPlan({ isWoman, area: a0 }: { isWoman: boolean; area:
             className={`chip ${acts.includes(a) ? 'chip-on' : ''}`}>{activityIcon(a)} {a}</button>))}</div>
       </div>
 
-      <div className="card">
-        <p className="label">چند تا وقت پیشنهادی (هر کسی می‌گه کدوم براش جور است)</p>
-        <div className="space-y-2">
-          {slots.map((s, i) => (
-            <div key={i} className="flex gap-2">
-              <input type="datetime-local" className="input !py-2" aria-label={`وقت ${i + 1}`} value={s} dir="ltr"
-                onChange={(e) => setSlots(slots.map((x, j) => (j === i ? e.target.value : x)))} />
-              <button type="button" className="btn btn-danger btn-sm" aria-label="حذف وقت" onClick={() => setSlots(slots.filter((_, j) => j !== i))}>✕</button>
-            </div>
-          ))}
+      <div className="card space-y-2 border-2 border-primary-soft">
+        <div className="flex items-center justify-between gap-2">
+          <p className="label !mb-0">وقت‌های پیشنهادی</p>
+          <button
+            type="button"
+            className={`chip !text-[11px] ${slots.length === 0 ? 'chip-on' : 'chip-accent'}`}
+            onClick={() => setSlots(slots.length === 0 ? [nextAt(2, 15), nextAt(3, 19)] : [])}
+          >
+            {slots.length === 0 ? '✓ پیشنهاد هوشمند از روی پروفایل اعضا' : '✨ بذار اپ از روی وقتِ اعضا پیشنهاد بده'}
+          </button>
         </div>
-        {slots.length < 12 && <button type="button" className="btn btn-sec btn-sm mt-2" onClick={() => setSlots([...slots, nextAt(slots.length + 2, 18)])}>＋ وقت دیگر</button>}
-        <p className="text-[11px] text-muted mt-2">بعداً هم بقیه می‌توانند وقت اضافه کنند.</p>
+        {slots.length === 0 ? (
+          <p className="text-xs text-muted bg-[#F7F6FF] rounded-xl p-3">
+            نیازی نیست الان ساعت دقیق بگذاری! بعد از ساخت ایونت، هر کسی که لینک را باز کند می‌گوید چه روزها و ساعت‌هایی و کجا می‌تواند بیاید، و اپ بهترین زمان و مکان مشترک را پیشنهاد می‌دهد.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {slots.map((s, i) => (
+              <div key={i} className="flex gap-2">
+                <input type="datetime-local" className="input !py-2" aria-label={`وقت ${i + 1}`} value={s} dir="ltr"
+                  onChange={(e) => setSlots(slots.map((x, j) => (j === i ? e.target.value : x)))} />
+                <button type="button" className="btn btn-danger btn-sm" aria-label="حذف وقت" onClick={() => setSlots(slots.filter((_, j) => j !== i))}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+        {slots.length < 12 && <button type="button" className="btn btn-sec btn-sm mt-2" onClick={() => setSlots([...slots, nextAt(slots.length + 2, 18)])}>＋ وقت دستی</button>}
+        <p className="text-[11px] text-muted mt-1">هر کس که عضو شود هم می‌تواند زمان‌های آزاد و محدودهٔ خودش را وارد کند تا اپ بهترین زمان و مکان را پیشنهاد بدهد.</p>
       </div>
 
       <div className="card">

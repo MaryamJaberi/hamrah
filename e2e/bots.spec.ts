@@ -83,6 +83,15 @@ test.describe('bots', () => {
     const box = a.getByRole('textbox').last();
     await box.fill(msg); await box.press('Enter');
     await expect(b.getByText(msg)).toBeVisible({ timeout: 15_000 });
+
+    // Member check-in & smart recommendation card
+    await expect(b.getByTestId('smart-suggestions-card')).toBeVisible();
+    await b.getByTestId('toggle-member-checkin').click();
+    await b.getByRole('button', { name: /بعدی: وقت‌های آزاد/ }).click();
+    await b.getByRole('button', { name: 'بازه شنبه عصر' }).click();
+    await b.getByRole('button', { name: /بعدی: فعالیت/ }).click();
+    await b.getByRole('button', { name: /ثبت شرایط من/ }).click();
+    await expect(b.getByText(/شرایط تو ثبت شد/)).toBeVisible();
     await ca.close(); await cb.close();
   });
 
