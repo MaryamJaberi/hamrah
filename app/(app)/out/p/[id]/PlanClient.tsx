@@ -4,19 +4,47 @@ import dynamic from 'next/dynamic';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import OutCard from '@/components/OutCard';
+import AreaPicker, { type Area } from '@/components/AreaPicker';
 import { pickIcebreakers } from '@/lib/icebreakers';
-import { activityIcon, directionsLink, errText, faDateTime, faNum, type OutCard as Card, type Place } from '@/lib/outings';
+import { DAYS, PARTS, activityIcon, directionsLink, errText, faDateTime, faNum, type OutCard as Card, type Place } from '@/lib/outings';
 
 const LeafletMap = dynamic(() => import('@/components/LeafletMap'), { ssr: false, loading: () => <div className="h-[260px] rounded-2xl bg-[#EFEFF6] animate-pulse" /> });
 
 type Slot = { id: string; starts_at: string; yes: number; maybe: number; no: number; mine: 'yes' | 'maybe' | 'no' | null; yes_names: string[] };
 type PPlace = Place & { id: string; votes: number; mine: boolean };
+type SuggestedWindow = { slot: string; count: number; names: string[] };
+type MyPrefs = { area_label: string; area_lat: number | null; area_lng: number | null; free_slots: string[]; activities: string[]; checked_in: boolean };
 type Plan = {
   id: string; title: string; note: string | null; status: string; invite_code: string; organizer: string; is_organizer: boolean;
   activity_options: string[]; area_label: string | null; area_lat: number | null; area_lng: number | null; women_only: boolean; max_people: number;
-  chosen_slot: string | null; chosen_place: string | null; members: Card[]; slots: Slot[]; places: PPlace[];
-  activity_tally: Record<string, number>; center: { lat: number | null; lng: number | null } | null; venue_hint: Record<string, boolean>;
+  chosen_slot: string | null; chosen_place: string | null; members: (Card & { has_prefs?: boolean })[]; slots: Slot[]; places: PPlace[];
+  activity_tally: Record<string, number>; center: { lat: number | null; lng: number | null; count?: number } | null; venue_hint: Record<string, boolean>;
+  suggested_windows?: SuggestedWindow[]; my_prefs?: MyPrefs;
 };
+
+const DAY_JS: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+const PART_HOUR: Record<string, number> = { morning: 10, afternoon: 15, evening: 18, night: 20 };
+
+function formatWindowKey(slotKey: string) {
+  const [d, p] = slotKey.split(':');
+  const dl = DAYS.find(([k]) => k === d)?.[1] ?? d;
+  const pl = PARTS.find(([k]) => k === p)?.[1] ?? p;
+  return `${dl} ${pl}`;
+}
+
+function windowToNextIso(slotKey: string): string {
+  const [d, p] = slotKey.split(':');
+  const targetDay = DAY_JS[d] ?? 6;
+  const hour = PART_HOUR[p] ?? 18;
+  const now = new Date();
+  const res = new Date(now);
+  res.setMinutes(0, 0, 0);
+  res.setHours(hour);
+  let diff = (targetDay - now.getDay() + 7) % 7;
+  if (diff === 0 && res.getTime() <= now.getTime() + 2 * 3600_000) diff = 7;
+  res.setDate(now.getDate() + diff);
+  return res.toISOString();
+}
 type Msg = { id: string; sender: string | null; body: string; created_at: string };
 
 const TABS = [['when', '🗓️ کِی'], ['what', '✨ چی'], ['where', '📍 کجا'], ['who', '👥 کی‌ها'], ['talk', '💬 یخ‌شکن'], ['chat', '✉️ گفتگو']] as const;
@@ -53,19 +81,77 @@ export default function PlanClient({ plan, me, initialMsgs, appUrl }: { plan: Pl
     await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000);
   }
 
+  // ---------- my check-in (where & when I can come) ----------
+  const initPrefs = plan.my_prefs;
+  const [checkinOpen, setCheckinOpen] = useState(false);
+  const [checkinStep, setCheckinStep] = useState<0 | 1 | 2>(0);
+  const [myArea, setMyArea] = useState<Area>({
+    label: initPrefs?.area_label ?? '',
+    lat: initPrefs?.area_lat ?? null,
+    lng: initPrefs?.area_lng ?? null,
+  });
+  const [myFreeSlots, setMyFreeSlots] = useState<string[]>(initPrefs?.free_slots ?? []);
+  const [prefsSavedMsg, setPrefsSavedMsg] = useState('');
+
   // ---------- when ----------
   const best = [...plan.slots].sort((a, b) => b.yes + b.maybe / 2 - (a.yes + a.maybe / 2))[0];
   const [newSlot, setNewSlot] = useState('');
 
   // ---------- what ----------
-  const mine = plan.members.find((m) => m.id === me)?.plan_activities ?? [];
-  const [myActs, setMyActs] = useState<string[]>(mine);
+  const mine = plan.members.find((m) => m.id === me)?.plan_activities ?? initPrefs?.activities ?? [];
+  const [myActs, setMyActs] = useState<string[]>(mine.length ? mine : plan.activity_options.slice(0, 1));
   const tally = plan.activity_tally ?? {};
   const topActivity = Object.entries(tally).sort((a, b) => b[1] - a[1])[0]?.[0] ?? plan.activity_options[0] ?? 'قهوه';
 
+  async function saveMyPrefs() {
+    setBusy(true); setErr(''); setPrefsSavedMsg('');
+    try {
+      const res = await fetch('/api/out/member-prefs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          planId: plan.id,
+          areaLabel: myArea.label,
+          lat: myArea.lat,
+          lng: myArea.lng,
+          freeSlots: myFreeSlots,
+          activities: myActs,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setErr(errText(j.error));
+      } else {
+        setCheckinOpen(false);
+        setPrefsSavedMsg('شرایط تو ثبت شد و پیشنهاد هوشمند به‌روز شد ✓');
+        setSugg(null);
+        router.refresh();
+      }
+    } catch {
+      setErr('ذخیره نشد. دوباره امتحان کن.');
+    }
+    setBusy(false);
+  }
+
+  async function adoptSuggestedWindow(slotKey: string) {
+    const iso = windowToNextIso(slotKey);
+    const targetMs = new Date(iso).getTime();
+    const existing = plan.slots.find((s) => Math.abs(new Date(s.starts_at).getTime() - targetMs) < 2 * 3600_000);
+    if (existing) {
+      await run(() => supabase.rpc('vote_outing_slot', { p_slot: existing.id, p_answer: 'yes' }));
+    } else {
+      setBusy(true); setErr('');
+      const { data: newId, error } = await supabase.rpc('add_outing_slot', { p_plan: plan.id, p_starts: iso });
+      if (error) { setErr(errText(error.message)); setBusy(false); return; }
+      if (newId) await supabase.rpc('vote_outing_slot', { p_slot: newId, p_answer: 'yes' });
+      setBusy(false);
+      router.refresh();
+    }
+  }
+
   // ---------- where ----------
-  const center = plan.area_lat != null ? { lat: Number(plan.area_lat), lng: Number(plan.area_lng) }
-    : plan.center?.lat != null ? { lat: Number(plan.center.lat), lng: Number(plan.center.lng) } : null;
+  const center = plan.center?.lat != null ? { lat: Number(plan.center.lat), lng: Number(plan.center.lng) }
+    : plan.area_lat != null ? { lat: Number(plan.area_lat), lng: Number(plan.area_lng) } : null;
   const [act, setAct] = useState(topActivity);
   const [sugg, setSugg] = useState<Place[] | null>(null);
   const [loadingPlaces, setLoadingPlaces] = useState(false);
@@ -80,7 +166,7 @@ export default function PlanClient({ plan, me, initialMsgs, appUrl }: { plan: Pl
     } catch { setSugg([]); }
     setLoadingPlaces(false);
   }
-  useEffect(() => { if (tab === 'where' && sugg === null && center) findPlaces(); /* eslint-disable-next-line */ }, [tab]);
+  useEffect(() => { if (sugg === null && center) findPlaces(); /* eslint-disable-next-line */ }, [tab, center?.lat, center?.lng]);
   const pins = useMemo(() => [
     ...plan.places.filter((p) => p.lat).map((p) => ({ lat: Number(p.lat), lng: Number(p.lng), label: `${p.name} · ${faNum(p.votes)} رأی`, highlight: true })),
     ...(sugg ?? []).filter((s) => !plan.places.some((p) => p.name === s.name)).slice(0, 15).map((s) => ({ lat: s.lat, lng: s.lng, label: s.name })),
@@ -142,13 +228,227 @@ export default function PlanClient({ plan, me, initialMsgs, appUrl }: { plan: Pl
           {chosenPlace?.lat && <a className="btn btn-sm mt-2" href={directionsLink({ lat: Number(chosenPlace.lat), lng: Number(chosenPlace.lng) })} target="_blank" rel="noopener noreferrer">مسیریابی</a>}
         </div>
       ) : (
-        <div className={`card mb-3 ${sp.get('new') ? 'border-2 border-primary' : ''}`}>
-          <p className="text-xs text-muted">لینک دعوت ({faNum(joined.length)} از {faNum(plan.max_people)} نفر)</p>
-          <div className="flex gap-2 items-center mt-1">
-            <code className="text-xs flex-1 truncate" dir="ltr">{link}</code>
-            <button className="btn btn-sm" onClick={share}>{copied ? 'کپی شد ✓' : 'بفرست'}</button>
+        <>
+          <div className={`card mb-3 ${sp.get('new') ? 'border-2 border-primary' : ''}`}>
+            <p className="text-xs text-muted">لینک دعوت ({faNum(joined.length)} از {faNum(plan.max_people)} نفر)</p>
+            <div className="flex gap-2 items-center mt-1">
+              <code className="text-xs flex-1 truncate" dir="ltr">{link}</code>
+              <button className="btn btn-sm" onClick={share}>{copied ? 'کپی شد ✓' : 'بفرست'}</button>
+            </div>
           </div>
-        </div>
+
+          {/* 1. Conversational check-in for each member: where & when I can come */}
+          <div className="card mb-3 border-2 border-primary-soft space-y-2" data-testid="member-checkin-card">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-bold">🙋‍♀️ کِی و کجا می‌تونی بیای؟</p>
+                <p className="text-[11px] text-muted">
+                  {myArea.label || myArea.lat != null ? `📍 ${myArea.label || 'محدوده ثبت‌شده'}` : '📍 بدون محدوده'}
+                  {' · '}
+                  {myFreeSlots.length ? `🗓️ ${faNum(myFreeSlots.length)} بازهٔ آزاد` : '🗓️ بدون وقت آزاد'}
+                  {' · '}
+                  {faNum(joined.filter((m) => m.has_prefs).length)} از {faNum(joined.length)} نفر ثبت کرده‌اند
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-sec btn-sm"
+                data-testid="toggle-member-checkin"
+                onClick={() => { setCheckinOpen(!checkinOpen); setCheckinStep(0); }}
+              >
+                {checkinOpen ? 'بستن' : 'ثبت / ویرایش ✎'}
+              </button>
+            </div>
+
+            {prefsSavedMsg && <p className="text-xs text-accent font-semibold" role="status">{prefsSavedMsg}</p>}
+
+            {checkinOpen && (
+              <div className="bg-[#F7F6FF] rounded-2xl p-3 space-y-3 mt-2">
+                <div className="flex gap-1.5">
+                  {(['📍 ۱. کجا هستی؟', '🗓️ ۲. کِی آزادی؟', '✨ ۳. چی دوست داری؟'] as const).map((lbl, idx) => (
+                    <button
+                      key={lbl}
+                      type="button"
+                      onClick={() => setCheckinStep(idx as 0 | 1 | 2)}
+                      className={`chip flex-1 justify-center !text-[11px] ${checkinStep === idx ? 'chip-on' : 'chip-ghost'}`}
+                    >
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+
+                {checkinStep === 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold">از کدوم محدوده میای تا اپ وسطِ همه رو حساب کنه؟</p>
+                    <AreaPicker value={myArea} onChange={setMyArea} />
+                    <div className="flex justify-end">
+                      <button type="button" className="btn btn-sm" onClick={() => setCheckinStep(1)}>بعدی: وقت‌های آزاد ←</button>
+                    </div>
+                  </div>
+                )}
+
+                {checkinStep === 1 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold">کدوم روزها و ساعت‌ها می‌تونی بیای؟</p>
+                    <table className="w-full text-[11px] text-center border-separate border-spacing-1 bg-white rounded-xl p-1">
+                      <thead>
+                        <tr><th></th>{PARTS.map(([k, l]) => <th key={k} scope="col" className="font-semibold text-muted">{l}</th>)}</tr>
+                      </thead>
+                      <tbody>
+                        {DAYS.map(([d, dl]) => (
+                          <tr key={d}>
+                            <th scope="row" className="text-right font-semibold">{dl}</th>
+                            {PARTS.map(([pt, pl]) => {
+                              const v = `${d}:${pt}`;
+                              const on = myFreeSlots.includes(v);
+                              return (
+                                <td key={pt}>
+                                  <button
+                                    type="button"
+                                    aria-pressed={on}
+                                    aria-label={`بازه ${dl} ${pl}`}
+                                    onClick={() => setMyFreeSlots(on ? myFreeSlots.filter((x) => x !== v) : [...myFreeSlots, v].slice(0, 28))}
+                                    className={`w-full h-7 rounded-lg ${on ? 'bg-primary text-white' : 'bg-[#F1F1F7]'}`}
+                                  >
+                                    {on ? '✓' : ''}
+                                  </button>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="flex justify-between">
+                      <button type="button" className="btn btn-sec btn-sm" onClick={() => setCheckinStep(0)}>→ قبلی</button>
+                      <button type="button" className="btn btn-sm" onClick={() => setCheckinStep(2)}>بعدی: فعالیت ←</button>
+                    </div>
+                  </div>
+                )}
+
+                {checkinStep === 2 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold">ترجیح می‌دی با هم چی‌کار کنیم؟</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {plan.activity_options.map((a) => (
+                        <button
+                          key={a}
+                          type="button"
+                          aria-pressed={myActs.includes(a)}
+                          onClick={() => setMyActs(myActs.includes(a) ? myActs.filter((x) => x !== a) : [...myActs, a])}
+                          className={`chip ${myActs.includes(a) ? 'chip-on' : ''}`}
+                        >
+                          {activityIcon(a)} {a}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex justify-between pt-1">
+                      <button type="button" className="btn btn-sec btn-sm" onClick={() => setCheckinStep(1)}>→ قبلی</button>
+                      <button type="button" className="btn btn-sm" disabled={busy} onClick={saveMyPrefs}>
+                        {busy ? '…' : 'ثبت شرایط من ✓'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 2. Smart group time & midpoint venue suggestions */}
+          <div className="card mb-3 border-2 border-accent-soft space-y-2.5" data-testid="smart-suggestions-card">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-bold">✨ پیشنهاد هوشمند اپ برای جمع شما</p>
+              <span className="chip chip-accent !text-[10px]">{activityIcon(topActivity)} {topActivity}</span>
+            </div>
+
+            {/* Best overlapping times */}
+            <div className="bg-[#F6FBF9] rounded-xl p-2.5 space-y-1.5">
+              <p className="text-xs font-bold text-[#00805F]">🗓️ بهترین زمان مشترک:</p>
+              {(plan.suggested_windows ?? []).length > 0 ? (
+                (plan.suggested_windows ?? []).slice(0, 3).map((w) => {
+                  const nextIso = windowToNextIso(w.slot);
+                  const targetMs = new Date(nextIso).getTime();
+                  const existing = plan.slots.find((s) => Math.abs(new Date(s.starts_at).getTime() - targetMs) < 2 * 3600_000);
+                  return (
+                    <div key={w.slot} className="flex items-center justify-between gap-2 text-xs bg-white rounded-lg p-2 border border-line">
+                      <div className="min-w-0 flex-1">
+                        <b className="block">{formatWindowKey(w.slot)} ({faDateTime(nextIso)})</b>
+                        <span className="text-[11px] text-muted">
+                          هماهنگ با {faNum(w.count)} از {faNum(joined.length)} نفر{w.names?.length ? ` (${w.names.join('، ')})` : ''}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={busy || existing?.mine === 'yes'}
+                        onClick={() => adoptSuggestedWindow(w.slot)}
+                        className={`chip shrink-0 !text-[11px] ${existing?.mine === 'yes' ? 'chip-accent' : 'chip-on'}`}
+                      >
+                        {existing?.mine === 'yes' ? '✓ موافقی' : existing ? '👍 منم می‌تونم' : '＋ انتخاب این وقت'}
+                      </button>
+                    </div>
+                  );
+                })
+              ) : best ? (
+                <p className="text-xs">
+                  بهترین وقت فعلی در رأی‌گیری: <b>{faDateTime(best.starts_at)}</b> (✅ {faNum(best.yes)} نفر)
+                </p>
+              ) : (
+                <p className="text-xs text-muted">
+                  وقتی اعضا در باکس بالا روزها و ساعت‌های آزادشان را ثبت کنند، بهترین زمان مشترک اینجا پیشنهاد می‌شود.
+                </p>
+              )}
+            </div>
+
+            {/* Best midpoint venue suggestions */}
+            <div className="bg-[#F7F6FF] rounded-xl p-2.5 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold text-primary">📍 بهترین مکان در نقطهٔ میانی جمع:</p>
+                {center && <button type="button" className="text-[11px] text-primary underline" onClick={() => setTab('where')}>دیدن روی نقشه</button>}
+              </div>
+              {!center ? (
+                <p className="text-xs text-muted">
+                  وقتی اعضا محدوده‌شان را در باکس بالا ثبت کنند، اپ نقطهٔ وسطِ همه را پیدا می‌کند و مکان پیشنهاد می‌دهد.
+                </p>
+              ) : (
+                <>
+                  {bestPlace && (
+                    <div className="flex items-center justify-between gap-2 text-xs bg-white rounded-lg p-2 border border-accent">
+                      <div className="min-w-0 flex-1">
+                        <b className="block truncate">⭐ {bestPlace.name}</b>
+                        <span className="text-[11px] text-muted">{faNum(bestPlace.votes)} رأی موافق در گروه{bestPlace.address ? ` · ${bestPlace.address}` : ''}</span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => run(() => supabase.rpc('toggle_outing_place_vote', { p_place: bestPlace.id }))}
+                        className={`chip !text-[11px] ${bestPlace.mine ? 'chip-on' : ''}`}
+                      >
+                        👍 {faNum(bestPlace.votes)}
+                      </button>
+                    </div>
+                  )}
+                  {loadingPlaces && <p className="text-xs text-muted">در حال پیدا کردن بهترین جاهای نزدیک به وسطِ جمع…</p>}
+                  {(sugg ?? []).filter((s) => !plan.places.some((p) => p.name === s.name)).slice(0, 2).map((s) => (
+                    <div key={s.name + s.lat} className="flex items-center justify-between gap-2 text-xs bg-white rounded-lg p-2 border border-line">
+                      <div className="min-w-0 flex-1">
+                        <b className="block truncate" dir="auto">{s.name}</b>
+                        <span className="text-[11px] text-muted block truncate" dir="auto">{s.address || 'نزدیک به مرکز محدودهٔ اعضا'}</span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => run(() => supabase.rpc('add_outing_place', { p_plan: plan.id, p_place: { ...s, kind: topActivity } }))}
+                        className="chip chip-on shrink-0 !text-[11px]"
+                      >
+                        ＋ انتخاب جا
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
+        </>
       )}
 
       <div role="tablist" aria-label="بخش‌های برنامه" className="flex gap-1 overflow-x-auto pb-2 -mx-1 px-1">
