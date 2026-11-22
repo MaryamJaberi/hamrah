@@ -126,12 +126,42 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   const HOBBIES = ["کتاب","موسیقی","سفر","طبیعت","ورزش","یوگا","آشپزی","عکاسی","نقاشی","فیلم و سریال","بازی","رقص","زبان یاد گرفتن","روانشناسی","تکنولوژی","مد و لباس","گیاه و باغبانی","حیوانات","شعر","تئاتر"];
   const WEEK_DAYS = [["sat","شنبه"],["sun","یکشنبه"],["mon","دوشنبه"],["tue","سه‌شنبه"],["wed","چهارشنبه"],["thu","پنجشنبه"],["fri","جمعه"]];
   const DAY_PARTS = [["morning","صبح (۹–۱۲)"],["afternoon","ظهر (۱۲–۱۶)"],["evening","عصر (۱۶–۲۰)"],["night","شب (۲۰–۲۳)"]];
+  const PART_HEAD = {morning:"🌅 صبح", afternoon:"☀️ ظهر", evening:"🌆 عصر", night:"🌙 شب"};
   const fmtWin = w => {
     const [d,p] = String(w||"").split(":");
     const dl = (WEEK_DAYS.find(x=>x[0]===d)||[,d])[1];
     const pl = (DAY_PARTS.find(x=>x[0]===p)||[,p])[1];
     return `${dl} ${pl}`;
   };
+  function renderWeekGrid(selectedArr, attrName) {
+    const set = new Set(Array.isArray(selectedArr) ? selectedArr : []);
+    return `
+      <div class="row" style="gap:6px;margin:6px 0;flex-wrap:wrap">
+        <button type="button" class="btn ghost sm" data-qfill-${attrName}="wknd">✨ آخر هفته‌ها (شنبه و یکشنبه)</button>
+        <button type="button" class="btn ghost sm" data-qfill-${attrName}="eve">🌆 عصرهای هفته</button>
+        <button type="button" class="btn line sm" data-qfill-${attrName}="clear">🧹 پاک کردن</button>
+      </div>
+      <table class="wk-grid">
+        <thead>
+          <tr>
+            <th></th>
+            ${DAY_PARTS.map(([pk]) => `<th>${PART_HEAD[pk]}</th>`).join("")}
+          </tr>
+        </thead>
+        <tbody>
+          ${WEEK_DAYS.map(([dk, dl]) => `
+            <tr>
+              <th class="day-lbl">${dl}</th>
+              ${DAY_PARTS.map(([pk]) => {
+                const k = `${dk}:${pk}`;
+                const on = set.has(k);
+                return `<td class="wk-cell ${on?"on":""}" data-${attrName}="${k}">${on?"✓":"·"}</td>`;
+              }).join("")}
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>`;
+  }
   let KNOWN_PROFILES = [];
   let RECENT_MEETUPS = [];
   let profilesLoaded = false;
@@ -274,36 +304,39 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const renderProfileSummary = (p) => {
       const d = p.data || {};
       const ORDER = ["origin","can_cities","free_windows","free_note","modes","max_min","activities","budget","diet","hobbies","age","job","about","question"];
-      const rows = ORDER.map(k => { const v = showVal(k, d[k]); return v ? `<div class="kv"><b>${LABEL[k]}:</b> ${esc(v)}</div>` : ""; }).join("");
+      const tags = ORDER.map(k => { const v = showVal(k, d[k]); return v ? `<span class="summary-tag"><b>${LABEL[k]}:</b>${esc(v)}</span>` : ""; }).filter(Boolean).join("");
       const shareUrl = `${location.origin}/d?u=${encodeURIComponent(p.name)}`;
       const shareTxt = `پروفایل و ساعت‌های آزاد ${p.name} در دورهمی همراه 🌿:\n${shareUrl}`;
       return `
-        <div style="background:#f8f5ff;border:1.5px solid #e0d4f7;border-radius:14px;padding:12px;margin-top:10px">
-          <div class="row" style="justify-content:space-between;margin-bottom:6px">
-            <b style="font-size:16px">🪪 پروفایل ${esc(p.name)}</b>
-            <span class="pill g">اطلاعات ذخیره‌شده ✓</span>
-          </div>
-          ${rows || '<p class="tiny">هنوز جزئیاتی ثبت نشده.</p>'}
-          ${(p.meetups && p.meetups.length) ? `<div style="margin-top:8px"><b class="tiny">دورهمی‌های ${esc(p.name)}:</b> <div class="chips" style="margin-top:4px">${p.meetups.map(m => `<a class="chip on" href="/d/${esc(m.code)}">🌿 ${esc(m.title)}</a>`).join("")}</div></div>` : ""}
-          <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #d8caec">
-            <b style="font-size:13px">🗓️ ویرایش ساعت‌ها و روزهای آزاد هفتگی ${esc(p.name)}:</b>
-            <div class="chips" style="margin-top:6px" id="hp_wins">
-              ${WEEK_DAYS.map(([dk,dl]) => DAY_PARTS.map(([pk,pl]) => {
-                const k = `${dk}:${pk}`;
-                const on = (d.free_windows||[]).includes(k);
-                return `<span class="chip ${on?"on":""}" data-hpwin="${k}">${dl} ${pl.split(" ")[0]}</span>`;
-              }).join("")).join("")}
+        <div style="background:#f9f8ff;border:1.5px solid #dfd8f7;border-radius:16px;padding:14px;margin-top:10px">
+          <div class="row" style="justify-content:space-between;margin-bottom:8px">
+            <div class="row" style="gap:8px">
+              <div class="av-sm" style="background:${colorOf(p.name)};width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800">${esc(p.name.slice(0,1))}</div>
+              <div>
+                <b style="font-size:16px;display:block">پروفایل ${esc(p.name)}</b>
+                <small class="muted">${d.origin?.fa ? `📍 ${esc(d.origin.fa)}` : "اطلاعات ذخیره‌شده"}</small>
+              </div>
             </div>
-            <label class="f" style="margin-top:8px">📍 شهرها و لوکیشن‌هایی که می‌توانم بیایم:</label>
+            <span class="pill g">آماده ✓</span>
+          </div>
+          ${tags ? `<div class="summary-tags">${tags}</div>` : '<p class="tiny">هنوز جزئیاتی ثبت نشده.</p>'}
+          ${(p.meetups && p.meetups.length) ? `<div style="margin-top:8px"><b class="tiny">دورهمی‌های قبلی:</b> <div class="chips" style="margin-top:4px">${p.meetups.map(m => `<a class="chip on" href="/d/${esc(m.code)}">🌿 ${esc(m.title)}</a>`).join("")}</div></div>` : ""}
+          <div style="margin-top:12px;padding-top:12px;border-top:1px dashed #d8caec">
+            <b style="font-size:13.5px;display:block;margin-bottom:4px">🗓️ جدول ساعت‌ها و روزهای آزاد هفتگی ${esc(p.name)}:</b>
+            <p class="tiny" style="margin:0 0 6px">روی هر خانه بزن تا ساعت‌های آزادت روشن/خاموش شود:</p>
+            <div id="hp_wins">
+              ${renderWeekGrid(d.free_windows || [], "hpwin")}
+            </div>
+            <label class="f" style="margin-top:10px">📍 شهرها و لوکیشن‌هایی که می‌توانم بیایم:</label>
             <div class="chips" id="hp_cities">
               ${CITIES.filter(c=>c.meet).map(c => {
                 const on = (d.can_cities||[]).includes(c.key) || (d.origin && d.origin.key === c.key);
                 return `<span class="chip ${on?"on":""}" data-hpcity="${c.key}">${esc(c.fa)}</span>`;
               }).join("")}
             </div>
-            <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:6px">
-              <button class="btn sm" id="hp_save">💾 ذخیرهٔ ساعت‌ها و لوکیشن‌هایم</button>
-              <button class="btn ghost sm" id="hp_share">📤 اشتراک‌گذاری پروفایلم با دوستان</button>
+            <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:6px">
+              <button class="btn sm" id="hp_save">💾 ذخیرهٔ ساعت‌ها و لوکیشن‌ها</button>
+              <button class="btn ghost sm" id="hp_share">🔗 کپی لینک پروفایلم</button>
               <a class="btn line sm" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(shareTxt)}">واتس‌اپ</a>
               <a class="btn line sm" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTxt.split("\n")[0])}">تلگرام</a>
             </div>
@@ -312,59 +345,129 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     };
 
     app.innerHTML = topbar() + `
-      <header class="top"><span class="logo">🌿</span><div><b>دورهمی</b><small>از خانوادهٔ «همراه»</small></div></header>
+      <header class="top"><span class="logo">🌿</span><div><b>دورهمی</b><small>هماهنگی راحتِ زمان و مکان با دوستان</small></div></header>
       ${sharedProf ? `<div class="card"><h2>👯‍♀️ پروفایل و ساعت‌های آزادِ ${esc(sharedProf.name)}</h2>${renderProfileSummary(sharedProf)}</div>` : ""}
-      <div class="card">
-        <div class="hero-e">👯‍♀️🗺️</div>
-        <h1>یک دورهمی بساز، لینکش را در گروه بفرست</h1>
-        <p class="muted">لازم نیست از اول روز و ساعت تعیین کنی! کافی است بگویی <b>«بریم بیرون؟»</b> تا هر کس بگوید چه روزها، چه ساعت‌هایی و کدام لوکیشن‌ها می‌تواند بیاید، و اپ بهترین زمان و شهر مشترک را به همه پیشنهاد بدهد.</p>
-      </div>
+
       <div class="card" id="prof_card">
-        <h2>🪪 پروفایل و ساعت‌های آزاد من (و بچه‌های قبلی)</h2>
-        <p class="muted">روی اسمت بزن تا اطلاعات قبلی‌ات (مثل دیدار نخست) بیاید، ساعت‌های آزادت را تنظیم کنی و اگر خواستی با دوستت به اشتراک بگذاری:</p>
-        <div class="chips" id="known_chips" style="margin-top:6px">
-          ${KNOWN_PROFILES.map(p => `<span class="chip ${(sharedProf && sharedProf.name===p.name)?"on":""}" data-kprof="${esc(p.name)}">👤 ${esc(p.name)}</span>`).join("")}
-          <span class="chip" id="new_prof_btn">+ ساخت پروفایل جدید</span>
+        <div class="row" style="justify-content:space-between">
+          <h2 style="margin:0">👤 کی هستی؟ (پروفایل و ساعت آزاد)</h2>
+          <span class="pill">ذخیره و اشتراک‌گذاری</span>
+        </div>
+        <p class="muted" style="margin-top:4px">روی اسمت بزن تا اطلاعاتت (از دیدار نخست) و جدول ساعت‌های آزادت باز شود:</p>
+        <div class="prof-grid" id="known_chips">
+          ${KNOWN_PROFILES.map(p => `
+            <div class="prof-btn ${(sharedProf && sharedProf.name===p.name)?"on":""}" data-kprof="${esc(p.name)}">
+              <div class="av-sm" style="background:${colorOf(p.name)}">${esc(p.name.slice(0,1))}</div>
+              <div style="min-width:0">
+                <div class="nm">${esc(p.name)}</div>
+                <div class="tiny" style="font-size:11px">${esc(p.data?.origin?.fa || "پروفایل آماده")}</div>
+              </div>
+            </div>`).join("")}
+          <div class="prof-btn" id="new_prof_btn" style="border-style:dashed;justify-content:center;color:var(--p)">
+            <b>+ نفر جدید</b>
+          </div>
         </div>
         <div id="prof_new_box" style="display:none;margin-top:8px">
-          <div class="row"><input type="text" id="np_name" maxlength="40" placeholder="اسمت را بنویس (مثلاً سارا)"><button class="btn sm" id="np_go">ساخت</button></div>
+          <div class="row"><input type="text" id="np_name" maxlength="40" placeholder="اسمت را بنویس (مثلاً سارا)"><button class="btn sm" id="np_go">ساخت پروفایل</button></div>
         </div>
-        <div id="prof_detail_box">${sharedProf ? "" : ""}</div>
+        <div id="prof_detail_box"></div>
       </div>
+
       <div class="card">
-        <h2>۱. اسم دورهمی یا فراخوان «بریم بیرون؟»</h2>
-        <input type="text" id="c_title" maxlength="80" placeholder="مثلاً: بریم بیرون؟ ✨ یا دورهمی دخترای هلند">
-        <label class="f">اسم تو (برگزارکننده)</label>
-        <input type="text" id="c_org" maxlength="40" placeholder="مثلاً مریم">
-        <label class="f">یک خط توضیح (اختیاری)</label>
-        <textarea id="c_note" maxlength="500" placeholder="مثلاً: بیایید بگید چه روزها و ساعت‌هایی و کجاها می‌تونید بیاید 🌿"></textarea>
-      </div>
-      <div class="card">
-        <div class="row" style="justify-content:space-between;align-items:center">
-          <h2 style="margin:0">۲. زمان دورهمی</h2>
-          <button type="button" class="btn ghost sm" id="c_open_toggle">🙋‍♀️ بدون تعیین وقت از اول (هر کس خودش بگوید کِی و کجا)</button>
+        <h1>✨ یک دورهمی بساز، لینکش را در گروه بفرست</h1>
+        <p class="muted" style="margin-bottom:10px">می‌توانی بدون تعیین تاریخ از اول فقط بگویی <b>«بریم بیرون؟»</b> تا هر کس ساعت و لوکیشن خودش را بزند، یا چند تاریخ مشخص پیشنهاد بدهی:</p>
+
+        <div class="seg">
+          <button type="button" id="seg_open" class="on">🙋‍♀️ باز («بریم بیرون؟» — هر کس بگوید کِی و کجا)</button>
+          <button type="button" id="seg_fixed">📅 با تاریخ‌های مشخص</button>
         </div>
-        <div id="c_open_note" class="okbox" style="display:none;margin-top:8px">
-          ✨ <b>حالت باز («بریم بیرون؟») فعال است:</b> از اول ساعت و روزی تعیین نمی‌شود؛ هر کسی که لینک را باز کند می‌گوید کدام روزها، چه ساعت‌هایی و کدام شهرها می‌تواند بیاید و اپ بهترین زمان و مکان مشترک را پیشنهاد می‌دهد.
+
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          <div style="flex:1.4;min-width:180px">
+            <label class="f" style="margin-top:2px">عنوان دورهمی</label>
+            <input type="text" id="c_title" maxlength="80" placeholder="مثلاً: بریم بیرون؟ ✨ یا کافهٔ آخر هفته">
+          </div>
+          <div style="flex:1;min-width:130px">
+            <label class="f" style="margin-top:2px">اسم تو (برگزارکننده)</label>
+            <input type="text" id="c_org" maxlength="40" placeholder="مثلاً مریم">
+          </div>
         </div>
-        <div id="c_fixed_box" style="margin-top:8px">
-          <p class="muted">یا چند روز پیشنهادی بگذار (بچه‌ها علاوه بر این‌ها می‌توانند ساعت‌ها و روزهای آزاد خودشان را هم بزنند):</p>
+
+        <div id="c_open_note" class="okbox" style="margin-top:10px">
+          ✨ <b>حالت باز فعال است:</b> لازم نیست روز و ساعت تعیین کنی! هر کس لینک را باز کند می‌گوید چه روزها، چه ساعت‌هایی و کدام لوکیشن‌ها می‌تواند بیاید و اپ بهترین زمان و شهر را پیشنهاد می‌دهد.
+        </div>
+
+        <div id="c_fixed_box" style="display:none;margin-top:10px;padding:10px;background:#f8f7fc;border-radius:12px">
+          <b style="font-size:13.5px;display:block;margin-bottom:6px">📅 روزهای پیشنهادی (بچه‌ها علاوه بر این‌ها ساعت آزادشان را هم می‌زنند):</b>
           <div id="c_opts"></div>
-          <button class="btn ghost sm" id="c_add" style="margin-top:8px">+ یک روز دیگر</button>
+          <button class="btn ghost sm" id="c_add" style="margin-top:6px">+ یک روز دیگر</button>
+        </div>
+
+        <details style="margin-top:10px">
+          <summary class="tiny" style="cursor:pointer;color:var(--p);font-weight:700">⚙️ توضیح اختیاری یا فقط خانم‌ها…</summary>
+          <div style="margin-top:8px">
+            <label class="f">توضیح کوتاه (اختیاری)</label>
+            <textarea id="c_note" maxlength="500" placeholder="مثلاً: بیایید بگید چه روزها و ساعت‌هایی و کجاها می‌تونید بیاید 🌿"></textarea>
+            <div class="opt" id="c_wo" style="margin-top:8px"><span class="e">👩</span><div><b>این دورهمی فقط برای خانم‌هاست</b><span>روی صفحهٔ دعوت نوشته می‌شود</span></div></div>
+          </div>
+        </details>
+
+        <div id="c_err"></div>
+        <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:12px">
+          <button class="btn grow" id="c_go_open">🙋‍♀️ ساخت «بریم بیرون؟» (بدون وقت از پیش تعیین‌شده)</button>
+          <button class="btn ghost" id="c_go">📅 ساخت با تاریخ‌های بالا</button>
         </div>
       </div>
-      <div class="card">
-        <div class="opt" id="c_wo"><span class="e">👩</span><div><b>این دورهمی فقط برای خانم‌هاست</b><span>روی صفحهٔ دعوت نوشته می‌شود</span></div></div>
-      </div>
-      <div id="c_err"></div>
-      <div class="row" style="flex-wrap:wrap;gap:8px">
-        <button class="btn grow" id="c_go">بساز و لینک بگیر ✨</button>
-        <button class="btn ghost grow" id="c_go_open">🙋‍♀️ بریم بیرون؟ (بدون تعیین وقت از اول)</button>
-      </div>
-      ${mine.length ? `<div class="card" style="margin-top:16px"><h2>دورهمی‌ها (مثل دیدار نخست)</h2>${mine.map(m=>`<div class="row" style="padding:6px 0"><a class="grow" href="/d/${esc(m.code)}${m.admin && m.admin !== "account"?`?admin=${esc(m.admin)}`:""}">${esc(m.title)}</a>${m.final?'<span class="pill g">قطعی</span>':""}${m.admin?'<span class="pill">برگزارکننده</span>':""}</div>`).join("")}</div>` : ""}
+
+      ${mine.length ? `
+        <div class="card">
+          <h2>🌿 دورهمی‌های فعال</h2>
+          ${mine.map(m=>`
+            <a class="meetup-item" href="/d/${esc(m.code)}${m.admin && m.admin !== "account"?`?admin=${esc(m.admin)}`:""}">
+              <div>
+                <b style="font-size:15px">${esc(m.title)}</b>
+                <div class="tiny">مشاهدهٔ جواب‌های بچه‌ها، زمان و لوکیشن پیشنهادی ←</div>
+              </div>
+              <div class="row" style="gap:4px">
+                ${m.final?'<span class="pill g">قطعی</span>':""}
+                ${m.admin?'<span class="pill">برگزارکننده</span>':'<span class="pill">مشاهده</span>'}
+              </div>
+            </a>`).join("")}
+        </div>` : ""}
     `;
     bindLoginLinks();
     if (USER) $("#c_org").value = USER.name || "";
+
+    function wireWeekGrid(container, getArr, setArr, attrName) {
+      const refreshCells = () => {
+        const cur = new Set(getArr());
+        container.querySelectorAll(`[data-${attrName}]`).forEach(td => {
+          const on = cur.has(td.dataset[attrName]);
+          td.classList.toggle("on", on);
+          td.textContent = on ? "✓" : "·";
+        });
+      };
+      container.querySelectorAll(`[data-${attrName}]`).forEach(el => el.onclick = () => {
+        const k = el.dataset[attrName];
+        const arr = getArr();
+        setArr(arr.includes(k) ? arr.filter(x => x !== k) : [...arr, k]);
+        refreshCells();
+      });
+      container.querySelectorAll(`[data-qfill-${attrName}]`).forEach(btn => btn.onclick = () => {
+        const mode = btn.getAttribute(`data-qfill-${attrName}`);
+        if (mode === "clear") setArr([]);
+        else if (mode === "wknd") {
+          const s = new Set(getArr());
+          ["sat:afternoon","sat:evening","sun:afternoon","sun:evening"].forEach(k => s.add(k));
+          setArr([...s]);
+        } else if (mode === "eve") {
+          const s = new Set(getArr());
+          WEEK_DAYS.forEach(([dk]) => s.add(`${dk}:evening`));
+          setArr([...s]);
+        }
+        refreshCells();
+      });
+    }
 
     let activeProf = sharedProf || null;
     function bindProfileDetail(p) {
@@ -372,20 +475,14 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       const box = $("#prof_detail_box");
       if (!box || !p) return;
       box.innerHTML = renderProfileSummary(p);
-      // Save to localStorage so opening any meetup auto-prefills this person's data
       store.set("dh_last", { name: p.name, data: p.data || {}, pub: p.public_fields || [], saved: true });
       if (!$("#c_org").value) $("#c_org").value = p.name;
 
-      box.querySelectorAll("[data-hpwin]").forEach(el => el.onclick = () => {
-        const k = el.dataset.hpwin;
-        p.data = p.data || {};
-        const arr = p.data.free_windows || [];
-        p.data.free_windows = arr.includes(k) ? arr.filter(x => x !== k) : [...arr, k];
-        el.classList.toggle("on", p.data.free_windows.includes(k));
-      });
+      p.data = p.data || {};
+      wireWeekGrid(box, () => p.data.free_windows || [], (v) => { p.data.free_windows = v; }, "hpwin");
+
       box.querySelectorAll("[data-hpcity]").forEach(el => el.onclick = () => {
         const k = el.dataset.hpcity;
-        p.data = p.data || {};
         const arr = p.data.can_cities || (p.data.origin?.key ? [p.data.origin.key] : []);
         p.data.can_cities = arr.includes(k) ? arr.filter(x => x !== k) : [...arr, k];
         el.classList.toggle("on", p.data.can_cities.includes(k));
@@ -469,12 +566,15 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const sun = new Date(sat); sun.setDate(sat.getDate()+1);
     addOpt(iso(sat), "15:00"); addOpt(iso(sun), "14:00");
     $("#c_add").onclick = () => addOpt("", "15:00");
-    $("#c_open_toggle").onclick = () => {
-      openSchedule = !openSchedule;
-      $("#c_open_note").style.display = openSchedule ? "block" : "none";
-      $("#c_fixed_box").style.display = openSchedule ? "none" : "block";
-      $("#c_open_toggle").textContent = openSchedule ? "📅 می‌خواهم خودم تاریخ بگذارم" : "🙋‍♀️ بدون تعیین وقت از اول (هر کس خودش بگوید کِی و کجا)";
+    const setSegMode = (isOpen) => {
+      openSchedule = isOpen;
+      $("#seg_open")?.classList.toggle("on", isOpen);
+      $("#seg_fixed")?.classList.toggle("on", !isOpen);
+      if ($("#c_open_note")) $("#c_open_note").style.display = isOpen ? "block" : "none";
+      if ($("#c_fixed_box")) $("#c_fixed_box").style.display = isOpen ? "none" : "block";
     };
+    if ($("#seg_open")) $("#seg_open").onclick = () => setSegMode(true);
+    if ($("#seg_fixed")) $("#seg_fixed").onclick = () => setSegMode(false);
     let wo = false;
     $("#c_wo").onclick = e => { wo = !wo; e.currentTarget.classList.toggle("on", wo); };
     async function createMeetup(forceOpen = false) {
@@ -566,17 +666,24 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         ${M.note?`<p>${esc(M.note)}</p>`:""}
         <p class="muted">${M.organizer_name?esc(M.organizer_name)+" دعوتت کرده. ":""}بگو چه روزها، چه ساعت‌هایی و کدام لوکیشن‌ها می‌توانی بیایی تا بهترین زمان و مکان مشترک برای همه پیدا شود. ${M.women_only?"<b>این دورهمی فقط برای خانم‌هاست.</b>":""}</p>
         ${KNOWN_PROFILES.length ? `
-          <div style="background:#f8f5ff;border:1.5px solid #e0d4f7;border-radius:12px;padding:10px;margin:10px 0">
-            <b style="font-size:13px">👤 قبلاً فرم پر کردی؟ روی اسمت بزن تا اطلاعاتت بیاید:</b>
-            <div class="chips" style="margin-top:6px">
-              ${KNOWN_PROFILES.map(p => `<span class="chip ${NAME===p.name?"on":""}" data-pickprof="${esc(p.name)}">👤 ${esc(p.name)}</span>`).join("")}
+          <div style="background:#f9f8ff;border:1.5px solid #dfd8f7;border-radius:14px;padding:12px;margin:10px 0">
+            <b style="font-size:13.5px;display:block;margin-bottom:6px">👤 از بچه‌های قبلی هستی؟ روی اسمت بزن تا اطلاعاتت بیاید:</b>
+            <div class="prof-grid">
+              ${KNOWN_PROFILES.map(p => `
+                <div class="prof-btn ${NAME===p.name?"on":""}" data-pickprof="${esc(p.name)}">
+                  <div class="av-sm" style="background:${colorOf(p.name)}">${esc(p.name.slice(0,1))}</div>
+                  <div style="min-width:0">
+                    <div class="nm">${esc(p.name)}</div>
+                    <div class="tiny" style="font-size:11px">${esc(p.data?.origin?.fa || "آماده")}</div>
+                  </div>
+                </div>`).join("")}
             </div>
           </div>` : ""}
-        <div class="okbox">🔒 زیر هر سؤال یک کلید هست: <b>«به بقیه نشان بده»</b>. اگر خاموش باشد، جوابت فقط به‌صورت بی‌نام در حساب‌ها می‌آید و اسمت کنارش نمی‌آید.</div>
         ${quick?`<div class="okbox">✨ جواب‌های دفعهٔ قبلت را گذاشتم: مبدأ (${esc(D.origin?.fa || "ثبت‌شده")})، وسیله، غذا، ترجیح‌ها و حریم خصوصی. فقط ساعت‌ها و لوکیشن‌هایی که این بار می‌تونی رو بزن؛ در صفحهٔ آخر هر بخش را خواستی با یک ضربه عوض کن.</div>`
           : prefilled?`<div class="note">✨ چند جواب را از پروفایل «همراه»ت پر کردم. هر کدام را خواستی عوض کن.</div>`:""}
-        <label class="f">اسمت (یا اسمی که بچه‌ها می‌شناسند)</label>
-        <input type="text" id="f_name" maxlength="40" value="${esc(NAME)}" placeholder="مثلاً سارا">`,
+        <label class="f">یا اسمت را اینجا بنویس</label>
+        <input type="text" id="f_name" maxlength="40" value="${esc(NAME)}" placeholder="مثلاً سارا">
+        <div class="okbox" style="margin-top:10px">🔒 زیر هر سؤال یک کلید هست: <b>«به بقیه نشان بده»</b>. اگر خاموش باشد، جوابت فقط به‌صورت بی‌نام در حساب‌ها می‌آید.</div>`,
         after: () => {
           root.querySelectorAll("[data-pickprof]").forEach(el => el.onclick = () => {
             const p = KNOWN_PROFILES.find(x => x.name === el.dataset.pickprof);
@@ -673,14 +780,10 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               <span class="chip y ${D.avail[i]==="yes"?"on":""}" data-av="${i}:yes">می‌تونم</span>
               <span class="chip m ${D.avail[i]==="maybe"?"on":""}" data-av="${i}:maybe">شاید</span>
               <span class="chip n ${D.avail[i]==="no"?"on":""}" data-av="${i}:no">نه</span></span></div>`).join("")}
-        ` : `<p class="muted">در این دورهمی وقت از قبل تعیین نشده! خودت بگو کدام روزها و چه ساعت‌هایی می‌توانی بیایی تا اپ بهترین زمان مشترک را پیدا کند:</p>`}
-        <label class="f" style="margin-top:10px">🗓️ کدام روزها و ساعت‌های هفته برایت خوب است؟ (در پروفایلت هم ذخیره می‌شود)</label>
-        <div class="chips" id="f_freewins">
-          ${WEEK_DAYS.map(([dk,dl]) => DAY_PARTS.map(([pk,pl]) => {
-            const k = `${dk}:${pk}`;
-            const on = (D.free_windows||[]).includes(k);
-            return `<span class="chip ${on?"on":""}" data-fwin="${k}">${dl} ${pl.split(" ")[0]}</span>`;
-          }).join("")).join("")}
+        ` : `<p class="muted">در این دورهمی وقت از قبل تعیین نشده! در جدول زیر روی خانه‌هایی که آزاد هستی بزن تا اپ بهترین زمان مشترک را پیدا کند:</p>`}
+        <label class="f" style="margin-top:10px">🗓️ جدول ساعت‌ها و روزهای آزاد هفته (در پروفایلت هم ذخیره می‌شود):</label>
+        <div id="f_freewins">
+          ${renderWeekGrid(D.free_windows || [], "fwin")}
         </div>
         <label class="f" style="margin-top:8px">⏰ توضیح ساعت دلخواه (اختیاری — مثلاً: شنبه ۱۴ تا ۱۹ یا جمعه بعد از کار)</label>
         <input type="text" id="f_fnote" maxlength="100" value="${esc(D.free_note||"")}" placeholder="مثلاً: یکشنبه‌ها از ساعت ۱۵ به بعد">
@@ -698,7 +801,37 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             const [i,v] = el.dataset.av.split(":"); D.avail[i] = v;
             el.parentNode.querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c === el));
           });
-          multi("[data-fwin]", "free_windows");
+          const fbox = $("#f_freewins");
+          if (fbox) {
+            const refreshF = () => {
+              const cur = new Set(D.free_windows || []);
+              fbox.querySelectorAll("[data-fwin]").forEach(td => {
+                const on = cur.has(td.dataset.fwin);
+                td.classList.toggle("on", on);
+                td.textContent = on ? "✓" : "·";
+              });
+            };
+            fbox.querySelectorAll("[data-fwin]").forEach(el => el.onclick = () => {
+              const k = el.dataset.fwin;
+              const arr = D.free_windows || [];
+              D.free_windows = arr.includes(k) ? arr.filter(x => x !== k) : [...arr, k];
+              refreshF();
+            });
+            fbox.querySelectorAll("[data-qfill-fwin]").forEach(btn => btn.onclick = () => {
+              const mode = btn.getAttribute("data-qfill-fwin");
+              if (mode === "clear") D.free_windows = [];
+              else if (mode === "wknd") {
+                const s = new Set(D.free_windows || []);
+                ["sat:afternoon","sat:evening","sun:afternoon","sun:evening"].forEach(k => s.add(k));
+                D.free_windows = [...s];
+              } else if (mode === "eve") {
+                const s = new Set(D.free_windows || []);
+                WEEK_DAYS.forEach(([dk]) => s.add(`${dk}:evening`));
+                D.free_windows = [...s];
+              }
+              refreshF();
+            });
+          }
           multi("[data-avcity]", "can_cities");
           oneOf("[data-until]", v => D.until = v);
           oneOf("[data-night]", v => D.night_alone = v, ".opt");
