@@ -170,29 +170,169 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     AUX_MAPS.forEach(m => { try { m.remove(); } catch(e){} });
     AUX_MAPS = [];
   }
-  function renderRadiusSlider(dataObj, sliderId){
+  const TIME_BUCKETS = [
+    ["wknd", "🎉 آخر هفته‌ها (شنبه و یکشنبه)"],
+    ["wkday_eve", "🌆 عصرهای وسط هفته (دوشنبه تا جمعه)"],
+    ["fri_eve", "🌙 جمعه عصر و شب"],
+    ["sat", "☀️ کل روز شنبه"],
+    ["sun", "☀️ کل روز یکشنبه"],
+    ["any", "✨ هر وقت که بشود"]
+  ];
+  const fmtTimeBucket = (k) => (TIME_BUCKETS.find(x => x[0] === k) || [, fmtWin(k)])[1];
+
+  function renderLocationControl(dataObj, prefix) {
+    const useRad = dataObj.use_radius !== false;
     const curMin = Number(dataObj?.max_min) || 45;
     const curKm = Math.round(curMin * 0.75);
     return `
-      <div class="rad-ctrl">
+      <div class="city-add-bar">
+        <select id="${prefix}_add_sel" style="flex:1;min-width:155px">
+          <option value="">+ افزودن شهر دیگر روی نقشه…</option>
+          ${CITIES.map(c => `<option value="${c.key}">${esc(c.fa)} (${esc(c.nl)})</option>`).join("")}
+        </select>
+        <button type="button" class="btn ghost sm" id="${prefix}_add_btn">+ افزودن شهر</button>
+        <label style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;background:#f4f2fc;padding:7px 10px;border-radius:11px;cursor:pointer;user-select:none">
+          <input type="checkbox" id="${prefix}_rad_chk" ${useRad?"checked":""} style="width:auto;margin:0;accent-color:var(--p)">
+          <span>⭕ نمایش دایرهٔ شعاع</span>
+        </label>
+      </div>
+      <div id="${prefix}_sel_tags" class="chips" style="margin:6px 0"></div>
+      <div class="rad-ctrl" id="${prefix}_rad_box" style="display:${useRad?"flex":"none"}">
         <span class="tiny" style="white-space:nowrap">⭕ شعاع دایرهٔ حرکت:</span>
-        <input type="range" id="${sliderId}" min="10" max="120" step="5" value="${curMin}">
-        <span class="rad-val" id="${sliderId}_lbl">${fa(curMin)} دقیقه (~${fa(curKm)} کم)</span>
+        <input type="range" id="${prefix}_rad" min="10" max="120" step="5" value="${curMin}">
+        <span class="rad-val" id="${prefix}_rad_lbl">${fa(curMin)} دقیقه (~${fa(curKm)} کم)</span>
       </div>`;
   }
-  function wireRadiusSlider(sliderId, dataObj, mapId){
-    const sl = document.getElementById(sliderId);
-    const lbl = document.getElementById(sliderId + "_lbl");
-    if (!sl) return;
-    sl.oninput = () => {
-      const v = Number(sl.value) || 45;
-      dataObj.max_min = v;
-      const rKm = Math.round(v * 0.75);
-      if (lbl) lbl.textContent = `${fa(v)} دقیقه (~${fa(rKm)} کم)`;
+
+  function renderTimeLocLinker(dataObj, prefix) {
+    return `
+      <div style="background:#faf9ff;border:1.5px dashed #dcd4f5;border-radius:14px;padding:10px 12px;margin-top:10px">
+        <b style="font-size:13px;display:block;margin-bottom:4px">🔗 وصل کردن مکان‌ها به زمان‌ها (اختیاری — مثلاً وسط هفته فقط شهر خودم، آخر هفته شهرهای دیگر):</b>
+        <div class="row" style="gap:6px;flex-wrap:wrap">
+          <select id="${prefix}_tl_when" style="flex:1.2;min-width:150px">
+            ${TIME_BUCKETS.map(([k,l]) => `<option value="${k}">${esc(l)}</option>`).join("")}
+            ${(Array.isArray(dataObj.free_windows) ? dataObj.free_windows : []).map(w => `<option value="${esc(w)}">🗓️ ${esc(fmtWin(w))}</option>`).join("")}
+          </select>
+          <select id="${prefix}_tl_city" style="flex:1;min-width:130px">
+            ${CITIES.filter(c => c.meet || (dataObj.origin && dataObj.origin.key === c.key) || (dataObj.can_cities||[]).includes(c.key)).map(c => `<option value="${c.key}">📍 ${esc(c.fa)}</option>`).join("")}
+          </select>
+          <button type="button" class="btn ghost sm" id="${prefix}_tl_add">+ وصل کن</button>
+        </div>
+        <div id="${prefix}_tl_list"></div>
+      </div>`;
+  }
+
+  function wireLocationAndTimeControls(container, dataObj, prefix, mapId) {
+    const refreshTags = () => {
+      const box = container.querySelector(`#${prefix}_sel_tags`);
+      if (!box) return;
+      const orig = dataObj.origin && dataObj.origin.key ? dataObj.origin : null;
+      const can = Array.isArray(dataObj.can_cities) ? dataObj.can_cities : [];
+      const items = [];
+      if (orig && orig.fa) {
+        items.push(`<span class="city-tag orig">📍 مبدأ: ${esc(orig.fa)}</span>`);
+      }
+      can.forEach(k => {
+        if (orig && orig.key === k) return;
+        const c = cityByKey(k);
+        if (c) items.push(`<span class="city-tag">✓ ${esc(c.fa)} <i data-rmcity="${esc(k)}" title="حذف">✕</i></span>`);
+      });
+      box.innerHTML = items.join("") || `<span class="tiny">روی شهرهای نقشه بزن یا از لیست بالا چند شهر اضافه کن.</span>`;
+      box.querySelectorAll("[data-rmcity]").forEach(x => x.onclick = () => {
+        const rk = x.dataset.rmcity;
+        dataObj.can_cities = (dataObj.can_cities || []).filter(c => c !== rk);
+        refreshTags();
+        const mEl = document.getElementById(mapId);
+        if (mEl && mEl._redrawMap) mEl._redrawMap();
+      });
+    };
+
+    const addCityKey = (k) => {
+      if (!k) return;
+      const c = cityByKey(k);
+      if (!c) return;
+      if (!dataObj.origin || !dataObj.origin.lat) {
+        dataObj.origin = { key: c.key, fa: c.fa, lat: c.lat, lng: c.lng };
+      }
+      const arr = Array.isArray(dataObj.can_cities) ? dataObj.can_cities : [];
+      if (!arr.includes(k)) dataObj.can_cities = [...arr, k];
+      refreshTags();
       const mEl = document.getElementById(mapId);
       if (mEl && mEl._redrawMap) mEl._redrawMap();
     };
+
+    const sel = container.querySelector(`#${prefix}_add_sel`);
+    const addBtn = container.querySelector(`#${prefix}_add_btn`);
+    if (addBtn && sel) {
+      addBtn.onclick = () => { if (sel.value) { addCityKey(sel.value); sel.value = ""; } };
+      sel.onchange = () => { if (sel.value) { addCityKey(sel.value); sel.value = ""; } };
+    }
+
+    const chk = container.querySelector(`#${prefix}_rad_chk`);
+    const radBox = container.querySelector(`#${prefix}_rad_box`);
+    if (chk) {
+      chk.onchange = () => {
+        dataObj.use_radius = chk.checked;
+        if (radBox) radBox.style.display = chk.checked ? "flex" : "none";
+        const mEl = document.getElementById(mapId);
+        if (mEl && mEl._redrawMap) mEl._redrawMap();
+      };
+    }
+
+    const sl = container.querySelector(`#${prefix}_rad`);
+    const lbl = container.querySelector(`#${prefix}_rad_lbl`);
+    if (sl) {
+      sl.oninput = () => {
+        const v = Number(sl.value) || 45;
+        dataObj.max_min = v;
+        dataObj.use_radius = true;
+        if (chk) chk.checked = true;
+        if (radBox) radBox.style.display = "flex";
+        const rKm = Math.round(v * 0.75);
+        if (lbl) lbl.textContent = `${fa(v)} دقیقه (~${fa(rKm)} کم)`;
+        const mEl = document.getElementById(mapId);
+        if (mEl && mEl._redrawMap) mEl._redrawMap();
+      };
+    }
+
+    // Time-Location linker
+    const tlList = container.querySelector(`#${prefix}_tl_list`);
+    const drawTl = () => {
+      if (!tlList) return;
+      const rules = Array.isArray(dataObj.time_locations) ? dataObj.time_locations : [];
+      tlList.innerHTML = rules.map((r, idx) => {
+        const c = cityByKey(r.city);
+        return `<div class="tl-row">
+          <span>🗓️ <b>${esc(fmtTimeBucket(r.when))}</b> ← 📍 <b>${esc(c ? c.fa : r.city)}</b></span>
+          <button type="button" class="btn line sm" data-rmtl="${idx}" style="padding:2px 8px">✕</button>
+        </div>`;
+      }).join("");
+      tlList.querySelectorAll("[data-rmtl]").forEach(b => b.onclick = () => {
+        const i = Number(b.dataset.rmtl);
+        dataObj.time_locations = (dataObj.time_locations || []).filter((_, idx) => idx !== i);
+        drawTl();
+      });
+    };
+    const tlAdd = container.querySelector(`#${prefix}_tl_add`);
+    if (tlAdd) {
+      tlAdd.onclick = () => {
+        const w = container.querySelector(`#${prefix}_tl_when`)?.value;
+        const c = container.querySelector(`#${prefix}_tl_city`)?.value;
+        if (!w || !c) return;
+        const arr = Array.isArray(dataObj.time_locations) ? dataObj.time_locations : [];
+        if (!arr.some(x => x.when === w && x.city === c)) {
+          dataObj.time_locations = [...arr, { when: w, city: c }];
+        }
+        addCityKey(c);
+        drawTl();
+      };
+    }
+
+    refreshTags();
+    drawTl();
+    return { refreshTags, drawTl };
   }
+
   function mountZoneMap(elId, dataObj, opts = {}){
     getL().then(L => {
       const el = document.getElementById(elId);
@@ -206,29 +346,31 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           layer.clearLayers();
           const pts = [];
           const orig = dataObj.origin && dataObj.origin.lat ? dataObj.origin : null;
+          const useRad = dataObj.use_radius !== false;
           const maxMin = Number(dataObj.max_min) || 45;
           // ~0.75 km per minute of travel radius around origin
           const radMeters = Math.max(6000, Math.min(90000, maxMin * 750));
           if (orig) {
-            L.circle([orig.lat, orig.lng], {
-              radius: radMeters,
-              color: "#6C5CE7",
-              fillColor: "#6C5CE7",
-              fillOpacity: 0.14,
-              weight: 2,
-              dashArray: "6 4"
-            }).addTo(layer).bindPopup(`محدودهٔ راحت حرکت از ${esc(orig.fa)} (حدود ${fa(maxMin)} دقیقه)`);
+            if (useRad) {
+              L.circle([orig.lat, orig.lng], {
+                radius: radMeters,
+                color: "#6C5CE7",
+                fillColor: "#6C5CE7",
+                fillOpacity: 0.14,
+                weight: 2,
+                dashArray: "6 4"
+              }).addTo(layer).bindPopup(`محدودهٔ راحت حرکت از ${esc(orig.fa)} (حدود ${fa(maxMin)} دقیقه)`);
+              const dLat = radMeters / 111000;
+              pts.push([orig.lat + dLat, orig.lng]);
+              pts.push([orig.lat - dLat, orig.lng]);
+            }
             pts.push([orig.lat, orig.lng]);
-            // include circle edges in bounds so zooming shows the circle nicely
-            const dLat = radMeters / 111000;
-            pts.push([orig.lat + dLat, orig.lng]);
-            pts.push([orig.lat - dLat, orig.lng]);
           }
           const canSet = new Set(Array.isArray(dataObj.can_cities) ? dataObj.can_cities : []);
-          CITIES.filter(c => c.meet || (orig && orig.key === c.key)).forEach(c => {
+          CITIES.filter(c => c.meet || canSet.has(c.key) || (orig && orig.key === c.key)).forEach(c => {
             const isOrig = orig && orig.key === c.key;
             const isCan = canSet.has(c.key);
-            const inRad = orig ? (km(orig, c) * 1000 <= radMeters) : false;
+            const inRad = (orig && useRad) ? (km(orig, c) * 1000 <= radMeters) : false;
             if (isCan && !isOrig) {
               L.circle([c.lat, c.lng], {
                 radius: 7500,
@@ -239,9 +381,9 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               }).addTo(layer);
               pts.push([c.lat, c.lng]);
             }
-            const color = isOrig ? "#6C5CE7" : (isCan || inRad) ? "#00B894" : "#9b95a8";
+            const color = isOrig ? "#6C5CE7" : isCan ? "#00B894" : inRad ? "#55efc4" : "#9b95a8";
             const mk = L.circleMarker([c.lat, c.lng], {
-              radius: isOrig ? 9 : (isCan || inRad) ? 8 : 6,
+              radius: isOrig ? 9 : isCan ? 8.5 : inRad ? 7.5 : 6,
               color: "#fff",
               fillColor: color,
               fillOpacity: 0.95,
@@ -276,7 +418,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     return KNOWN_PROFILES;
   }
   const LABEL = {
-    origin:"از کجا میاد", can_cities:"لوکیشن‌هایی که می‌تونه بیاد", modes:"وسیله", seats:"جای خالی در ماشین", max_min:"حداکثر زمان راه",
+    origin:"از کجا میاد", can_cities:"لوکیشن‌هایی که می‌تونه بیاد", time_locations:"مکان‌های متصل به زمان", modes:"وسیله", seats:"جای خالی در ماشین", max_min:"حداکثر زمان راه",
     avail:"وقت‌ها", free_windows:"ساعت‌ها و روزهای آزاد", free_note:"ساعت پیشنهادی", until:"تا کی می‌ماند",
     night_alone:"برگشت شب", activities:"دوست دارد", budget:"بودجه", diet:"غذا", allergy:"آلرژی", dislikes:"غذایی که دوست ندارد",
     alcohol:"الکل", smoke:"سیگار", weed:"ماری‌جوانا", langs:"زبان", bring:"با کی میاد", photo:"عکس و استوری", quiet:"جای آرام",
@@ -298,6 +440,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     switch(k){
       case "origin": return v.fa || v.label || "";
       case "can_cities": return (Array.isArray(v) ? v : []).map(k => (cityByKey(k)||{}).fa || k).join("، ");
+      case "time_locations": return (Array.isArray(v) ? v : []).map(r => `${fmtTimeBucket(r.when)} ← ${(cityByKey(r.city)||{}).fa || r.city}`).join(" · ");
       case "free_windows": return (Array.isArray(v) ? v : []).map(fmtWin).join(" · ");
       case "free_note": return String(v);
       case "modes": return map(v, MODE_L);
@@ -457,19 +600,20 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             ${tags ? `<div class="summary-tags">${tags}</div>` : ""}
 
             <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #d8caec">
-              <b style="font-size:13.5px;display:block;margin-bottom:4px">📍 شهر مبدأ و شعاع دایرهٔ حرکت من روی نقشه:</b>
+              <b style="font-size:13.5px;display:block;margin-bottom:4px">📍 شهر مبدأ، شهرهای دیگر و دایرهٔ حرکت (اختیاری) روی نقشه:</b>
               <div class="row" style="gap:6px;margin-bottom:6px">
                 <select id="pm_origin_sel" style="flex:1">
-                  <option value="">انتخاب شهر مبدأ…</option>
-                  ${CITIES.map(c => `<option value="${c.key}" ${(d.origin && d.origin.key===c.key)?"selected":""}>${esc(c.fa)} (${esc(c.nl)})</option>`).join("")}
+                  <option value="">انتخاب شهر مبدأ اصلی…</option>
+                  ${CITIES.map(c => `<option value="${c.key}" ${(d.origin && d.origin.key===c.key)?"selected":""}>📍 مبدأ: ${esc(c.fa)} (${esc(c.nl)})</option>`).join("")}
                 </select>
               </div>
-              ${renderRadiusSlider(d, "pm_rad")}
+              ${renderLocationControl(d, "pm_loc")}
               <div id="hp_map" class="map-box"></div>
               <div class="map-legend">
-                <span><i class="map-dot" style="background:#6C5CE7"></i>مبدأ و دایرهٔ حرکت من</span>
-                <span><i class="map-dot" style="background:#00B894"></i>نقاط داخل محدوده / انتخاب‌شده (روی نقاط نقشه بزن)</span>
+                <span><i class="map-dot" style="background:#6C5CE7"></i>مبدأ و دایرهٔ حرکت (اختیاری)</span>
+                <span><i class="map-dot" style="background:#00B894"></i>شهرهای انتخاب‌شده (روی نقشه هم می‌توانی چند شهر را بزنی)</span>
               </div>
+              ${renderTimeLocLinker(d, "pm_loc")}
 
               <b style="font-size:13.5px;display:block;margin:12px 0 4px">🗓️ جدول ساعت‌ها و روزهای آزاد هفتگی من:</b>
               <div id="hp_wins">
@@ -534,25 +678,27 @@ export function mount(root: HTMLElement, opts: DhOptions) {
 
       if (p) {
         p.data = p.data || {};
+        wireWeekGrid(wrap, () => p.data.free_windows || [], (v) => { p.data.free_windows = v; }, "hpwin");
+        clearAuxMaps();
+        const helpers = wireLocationAndTimeControls(wrap, p.data, "pm_loc", "hp_map");
         const origSel = wrap.querySelector("#pm_origin_sel");
         if (origSel) origSel.onchange = () => {
           const c = cityByKey(origSel.value);
           if (c) {
             p.data.origin = { key: c.key, fa: c.fa, lat: c.lat, lng: c.lng };
+            helpers.refreshTags();
             const mEl = document.getElementById("hp_map");
             if (mEl && mEl._redrawMap) mEl._redrawMap();
           }
         };
-        wireWeekGrid(wrap, () => p.data.free_windows || [], (v) => { p.data.free_windows = v; }, "hpwin");
-        clearAuxMaps();
         const toggleHpCity = (k) => {
           const arr = p.data.can_cities || [];
           p.data.can_cities = arr.includes(k) ? arr.filter(x => x !== k) : [...arr, k];
+          helpers.refreshTags();
           const mapEl = document.getElementById("hp_map");
           if (mapEl && mapEl._redrawMap) mapEl._redrawMap();
         };
         mountZoneMap("hp_map", p.data, { onToggleCity: (c) => toggleHpCity(c.key) });
-        wireRadiusSlider("pm_rad", p.data, "hp_map");
 
         const lo = wrap.querySelector("#pm_logout");
         if (lo) lo.onclick = () => {
@@ -957,25 +1103,27 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           }
         }},
       {k:"origin", t:"از کجا میای؟", draw: () => `
-        <h2>📍 از کجا راه میفتی و تا چه شعاعی می‌تونی بیای؟</h2>
-        <p class="muted">نزدیک‌ترین شهر یا ایستگاهت را انتخاب کن، بعد با اسلایدر زیر دایرهٔ محدودهٔ حرکتت را روی نقشه کم‌وزیاد کن:</p>
-        <input type="text" id="f_cs" placeholder="جستجو: روتردام، Delft، لایدن…">
+        <h2>📍 از کجا راه میفتی و کدام شهرها می‌توانی بیایی؟</h2>
+        <p class="muted">نزدیک‌ترین شهر یا ایستگاه مبدأ را انتخاب کن. از منوی زیر می‌توانی چند شهر دیگر را هم به نقشه اضافه کنی (کشیدن دایره اختیاری است):</p>
+        <input type="text" id="f_cs" placeholder="جستجوی شهر مبدأ: روتردام، Delft، لایدن…">
         <div class="list-sel" id="f_cl"></div>
         <div class="row" style="margin-top:8px;justify-content:space-between;flex-wrap:wrap">
           <button class="btn line sm" id="f_geo">📡 از موقعیت گوشی‌ام (حدود ۵ کیلومتر)</button>
           <div id="f_osel"></div>
         </div>
-        <label class="f" style="margin-top:12px">🗺️ محدودهٔ حرکت تو روی نقشه (دایره را کم‌وزیاد کن یا روی نقاط نقشه بزن):</label>
-        ${renderRadiusSlider(D, "f_orig_rad")}
+        <label class="f" style="margin-top:12px">🗺️ شهرهای انتخابی و محدودهٔ حرکت روی نقشه:</label>
+        ${renderLocationControl(D, "f_orig")}
         <div id="f_orig_map" class="map-box"></div>
         <div class="map-legend">
-          <span><i class="map-dot" style="background:#6C5CE7"></i>مبدأ و دایرهٔ شعاع حرکت</span>
-          <span><i class="map-dot" style="background:#00B894"></i>نقاط داخل دایره / انتخاب‌شده</span>
+          <span><i class="map-dot" style="background:#6C5CE7"></i>مبدأ و دایرهٔ شعاع حرکت (اختیاری)</span>
+          <span><i class="map-dot" style="background:#00B894"></i>شهرهای انتخاب‌شده (روی نقشه هم می‌توانی چند شهر را بزنی)</span>
         </div>
         ${visT("origin","شهر و محدوده‌ام را به بقیه نشان بده")}`,
         after: () => {
           clearAuxMaps();
+          const helpers = wireLocationAndTimeControls(root, D, "f_orig", "f_orig_map");
           const refreshOrigMap = () => {
+            helpers.refreshTags();
             const mEl = document.getElementById("f_orig_map");
             if (mEl && mEl._redrawMap) mEl._redrawMap();
           };
@@ -997,7 +1145,6 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             refreshOrigMap();
           };
           mountZoneMap("f_orig_map", D, { onToggleCity: (c) => toggleCanCity(c.key) });
-          wireRadiusSlider("f_orig_rad", D, "f_orig_map");
           $("#f_geo").onclick = () => {
             if (!navigator.geolocation) return toast("گوشی موقعیت نمی‌دهد");
             $("#f_geo").innerHTML = `<span class="spin"></span>`;
@@ -1050,13 +1197,14 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         </div>
         <label class="f" style="margin-top:8px">⏰ توضیح ساعت دلخواه (اختیاری — مثلاً: شنبه ۱۴ تا ۱۹ یا جمعه بعد از کار)</label>
         <input type="text" id="f_fnote" maxlength="100" value="${esc(D.free_note||"")}" placeholder="مثلاً: یکشنبه‌ها از ساعت ۱۵ به بعد">
-        <label class="f" style="margin-top:10px">🗺️ محدودهٔ حرکت روی نقشه (دایره را کم‌وزیاد کن یا روی نقاط نقشه بزن):</label>
-        ${renderRadiusSlider(D, "f_av_rad")}
+        <label class="f" style="margin-top:10px">🗺️ شهرها و محدودهٔ حرکت روی نقشه (می‌توانی چند شهر اضافه کنی؛ دایره اختیاری است):</label>
+        ${renderLocationControl(D, "f_av")}
         <div id="f_av_map" class="map-box"></div>
         <div class="map-legend">
-          <span><i class="map-dot" style="background:#6C5CE7"></i>مبدأ و دایرهٔ شعاع حرکت</span>
-          <span><i class="map-dot" style="background:#00B894"></i>نقاط داخل دایره / انتخاب‌شده</span>
+          <span><i class="map-dot" style="background:#6C5CE7"></i>مبدأ و دایرهٔ شعاع حرکت (اختیاری)</span>
+          <span><i class="map-dot" style="background:#00B894"></i>شهرهای انتخاب‌شده</span>
         </div>
+        ${renderTimeLocLinker(D, "f_av")}
         <label class="f">🕘 معمولاً تا چه ساعتی می‌تونی بمونی؟</label>
         <div class="chips">${Object.entries(UNTIL_L).map(([k,l])=>`<span class="chip ${D.until===k?"on":""}" data-until="${k}">${l}</span>`).join("")}</div>
         <label class="f">🌙 تنها برگشتن در تاریکی؟</label>
@@ -1099,14 +1247,15 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             });
           }
           clearAuxMaps();
+          const helpers = wireLocationAndTimeControls(root, D, "f_av", "f_av_map");
           const toggleAvCity = (k) => {
             const arr = D.can_cities || [];
             D.can_cities = arr.includes(k) ? arr.filter(x => x !== k) : [...arr, k];
+            helpers.refreshTags();
             const mEl = document.getElementById("f_av_map");
             if (mEl && mEl._redrawMap) mEl._redrawMap();
           };
           mountZoneMap("f_av_map", D, { onToggleCity: (c) => toggleAvCity(c.key) });
-          wireRadiusSlider("f_av_rad", D, "f_av_map");
           oneOf("[data-until]", v => D.until = v);
           oneOf("[data-night]", v => D.night_alone = v, ".opt");
         },
@@ -1196,7 +1345,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           <h3>🔒 خصوصی (فقط بی‌نام در حساب‌ها)</h3>${priv.join("") || '<p class="tiny">هیچ چیز</p>'}
           <p class="tiny" style="margin-top:10px">برای عوض کردن هر بخش، دکمه‌اش را بالا بزن. بعداً هم می‌توانی فرمت را ویرایش یا پاک کنی.${USER?" این جواب‌ها برای دورهمی بعدی‌ات هم یادم می‌ماند (به‌جز روزها).":""}</p>`; }},
     ];
-    const GROUPS = {origin:["origin","can_cities"], modes:["modes","seats","max_min"], avail:["avail","free_windows","free_note","until","night_alone"], activities:["activities","budget"],
+    const GROUPS = {origin:["origin","can_cities","time_locations"], modes:["modes","seats","max_min"], avail:["avail","free_windows","free_note","until","night_alone"], activities:["activities","budget"],
       diet:["diet","allergy","dislikes"], life:["alcohol","smoke","weed"], more:["langs","bring","photo","quiet","access"],
       age:["age"], job:["job"], contact:["contact"]};
     function groupOf(k){ for (const [g,ks] of Object.entries(GROUPS)) if (ks.includes(k)) return g; return k; }
@@ -1279,13 +1428,21 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const winCounts = {};
     const cityVotes = {};
     const freeNotes = [];
+    const timeLocNotes = [];
     people.forEach(p => {
       const kp = KNOWN_PROFILES.find(x => x.name.toLowerCase() === (p.name||"").toLowerCase());
       const fw = (p.free_windows && p.free_windows.length) ? p.free_windows : (kp?.data?.free_windows || []);
       const cc = (p.can_cities && p.can_cities.length) ? p.can_cities : (kp?.data?.can_cities || (p.origin?.key ? [p.origin.key] : []));
       const fn = p.free_note || kp?.data?.free_note;
+      const tl = (p.time_locations && p.time_locations.length) ? p.time_locations : (kp?.data?.time_locations || []);
       fw.forEach(w => { winCounts[w] = winCounts[w] || {w, count:0, names:[]}; winCounts[w].count++; winCounts[w].names.push(p.name); });
       cc.forEach(c => { cityVotes[c] = (cityVotes[c] || 0) + 1; });
+      tl.forEach(r => {
+        if (r && r.city) {
+          cityVotes[r.city] = (cityVotes[r.city] || 0) + 1;
+          timeLocNotes.push({ name: p.name, text: `${fmtTimeBucket(r.when)} ← ${(cityByKey(r.city)||{}).fa || r.city}` });
+        }
+      });
       if (fn) freeNotes.push({name: p.name, note: fn});
     });
     const winSorted = Object.values(winCounts).sort((a,b) => b.count - a.count);
@@ -1317,7 +1474,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const untils = rows.map(r => r.until).filter(Boolean);
     const hob = {}; rows.forEach(r => (r.hobbies||[]).forEach(h => hob[h] = (hob[h]||0)+1));
     return {
-      n, slots, winSorted, freeNotes, cityVotes, hubs, withO: withO.length,
+      n, slots, winSorted, freeNotes, timeLocNotes, cityVotes, hubs, withO: withO.length,
       dietC, allergies, actsSorted, hob: Object.entries(hob).sort((a,b)=>b[1]-a[1]),
       budget: budgets.length ? Math.min(...budgets) : null,
       earliestUntil: untils.length ? untils.filter(u=>u!=="late").map(Number).sort((a,b)=>a-b)[0] : null,
@@ -1427,6 +1584,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               <span class="tiny" style="min-width:110px">${fa(w.count)} نفر (${esc(w.names.join("، "))})</span></div>`).join("")}
           </div>` : (!A.slots.length ? `<p class="muted">وقتی بچه‌ها ساعت‌ها و روزهای آزادشان را در فرم علامت بزنند، بهترین زمان مشترک اینجا پیشنهاد می‌شود.</p>` : "")}
         ${A.freeNotes.length ? `<div style="margin-top:8px">${A.freeNotes.map(fn=>`<div class="tiny">⏰ <b>${esc(fn.name)}:</b> ${esc(fn.note)}</div>`).join("")}</div>` : ""}
+        ${(A.timeLocNotes && A.timeLocNotes.length) ? `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line)"><b class="tiny">🔗 مکان‌های متصل به زمانِ بچه‌ها:</b>${A.timeLocNotes.map(tl=>`<div class="tiny">📍 <b>${esc(tl.name)}:</b> ${esc(tl.text)}</div>`).join("")}</div>` : ""}
       </div>
       <div class="card">
         <h2>📍 منصفانه‌ترین شهر برای همه</h2>

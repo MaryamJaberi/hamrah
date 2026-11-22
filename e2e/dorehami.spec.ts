@@ -108,14 +108,18 @@ test('open "بریم بیرون؟" meetup without preset dates + loading previou
   await page.locator('#f_name').fill('مهمان');
   await page.locator('#f_next').click();
   await page.locator('[data-k=rotterdam]').click();
-  await page.locator('#f_orig_rad').fill('60');
+  await page.locator('#f_orig_add_sel').selectOption('delft');
+  await page.locator('#f_orig_rad_chk').uncheck();
   await page.locator('#f_next').click();
   await page.locator('[data-mode=ov]').click();
   await page.locator('#f_next').click();
 
-  // In open mode, pick free day/time windows instead of preset dates
+  // In open mode, pick free day/time windows and link a location to a time
   await page.locator('[data-fwin="sat:evening"]').click();
   await page.locator('[data-fwin="sun:afternoon"]').click();
+  await page.locator('#f_av_tl_when').selectOption('wknd');
+  await page.locator('#f_av_tl_city').selectOption('delft');
+  await page.locator('#f_av_tl_add').click();
   await page.locator('#f_next').click();
   for (let i = 0; i < 5; i++) await page.locator('#f_next').click();
   await expect(page.getByRole('heading', { name: /آماده است/ })).toBeVisible();

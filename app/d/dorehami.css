@@ -126,3 +126,9 @@
 .dh .code-inp{font-family:ui-monospace,monospace;letter-spacing:1px;text-align:center;font-weight:800;font-size:16px;direction:ltr}
 .dh .drawer-backdrop{position:fixed;inset:0;background:rgba(20,16,40,.45);z-index:900;display:flex;align-items:flex-end;justify-content:center;padding:0}
 .dh .drawer{background:#fff;width:100%;max-width:540px;max-height:88vh;overflow-y:auto;border-radius:22px 22px 0 0;padding:18px 16px 26px;box-shadow:0 -8px 30px rgba(0,0,0,.18)}
+.dh .city-add-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:6px 0}
+.dh .city-tag{display:inline-flex;align-items:center;gap:5px;background:#eefbf6;border:1.5px solid #00B894;color:#0e5f4d;border-radius:999px;padding:4px 10px;font-size:13px;font-weight:700}
+.dh .city-tag.orig{background:#f3f0ff;border-color:var(--p);color:var(--p)}
+.dh .city-tag i{cursor:pointer;font-style:normal;opacity:.7;padding:0 2px}
+.dh .city-tag i:hover{opacity:1}
+.dh .tl-row{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#f8f6ff;border:1px solid #e1daf7;border-radius:11px;padding:6px 10px;margin-top:6px;font-size:13px}
