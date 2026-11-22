@@ -165,6 +165,75 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   let KNOWN_PROFILES = [];
   let RECENT_MEETUPS = [];
   let profilesLoaded = false;
+  let AUX_MAPS = [];
+  function clearAuxMaps(){
+    AUX_MAPS.forEach(m => { try { m.remove(); } catch(e){} });
+    AUX_MAPS = [];
+  }
+  function mountZoneMap(elId, dataObj, opts = {}){
+    getL().then(L => {
+      const el = document.getElementById(elId);
+      if (!L || !el || dead) return;
+      try {
+        const m = L.map(el, {zoomControl:true, attributionControl:false});
+        AUX_MAPS.push(m);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:18}).addTo(m);
+        let layer = L.layerGroup().addTo(m);
+        const redraw = () => {
+          layer.clearLayers();
+          const pts = [];
+          const orig = dataObj.origin && dataObj.origin.lat ? dataObj.origin : null;
+          const maxMin = Number(dataObj.max_min) || 45;
+          // ~0.75 km per minute of travel radius around origin
+          const radMeters = Math.max(8000, Math.min(75000, maxMin * 750));
+          if (orig) {
+            L.circle([orig.lat, orig.lng], {
+              radius: radMeters,
+              color: "#6C5CE7",
+              fillColor: "#6C5CE7",
+              fillOpacity: 0.14,
+              weight: 2,
+              dashArray: "6 4"
+            }).addTo(layer).bindPopup(`محدودهٔ راحت حرکت از ${esc(orig.fa)} (حدود ${fa(maxMin)} دقیقه)`);
+            pts.push([orig.lat, orig.lng]);
+          }
+          const canSet = new Set(Array.isArray(dataObj.can_cities) ? dataObj.can_cities : []);
+          CITIES.filter(c => c.meet || (orig && orig.key === c.key)).forEach(c => {
+            const isOrig = orig && orig.key === c.key;
+            const isCan = canSet.has(c.key);
+            if (isCan && !isOrig) {
+              L.circle([c.lat, c.lng], {
+                radius: 7500,
+                color: "#00B894",
+                fillColor: "#00B894",
+                fillOpacity: 0.20,
+                weight: 2
+              }).addTo(layer);
+              pts.push([c.lat, c.lng]);
+            }
+            const color = isOrig ? "#6C5CE7" : isCan ? "#00B894" : "#9b95a8";
+            const mk = L.circleMarker([c.lat, c.lng], {
+              radius: isOrig ? 9 : isCan ? 8 : 6,
+              color: "#fff",
+              fillColor: color,
+              fillOpacity: 0.95,
+              weight: 2
+            }).addTo(layer);
+            mk.bindTooltip(c.fa, {permanent: isOrig || isCan, direction: "top", offset: [0, -6]});
+            if (opts.onToggleCity) {
+              mk.on("click", () => { opts.onToggleCity(c); redraw(); });
+            }
+          });
+          if (pts.length > 1) m.fitBounds(pts, {padding:[28,28], maxZoom:10});
+          else if (pts.length === 1) m.setView(pts[0], 9);
+          else m.setView([52.08, 4.55], 8);
+        };
+        redraw();
+        el._redrawMap = redraw;
+        setTimeout(() => { try { m.invalidateSize(); } catch(e){} }, 120);
+      } catch(e){}
+    });
+  }
   async function loadKnownProfiles(){
     if (profilesLoaded) return KNOWN_PROFILES;
     try {
@@ -230,6 +299,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const parts = location.pathname.split("/").filter(Boolean);   // ["d", code?]
     const q = new URLSearchParams(location.search);
     if (MAP) { try { MAP.remove(); } catch(e){} MAP = null; }
+    clearAuxMaps();
     if (parts[0] === "d" && parts[1]) return meetupPage(parts[1].toLowerCase(), q);
     return homePage();
   }
@@ -327,8 +397,14 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             <div id="hp_wins">
               ${renderWeekGrid(d.free_windows || [], "hpwin")}
             </div>
-            <label class="f" style="margin-top:10px">📍 شهرها و لوکیشن‌هایی که می‌توانم بیایم:</label>
-            <div class="chips" id="hp_cities">
+            <label class="f" style="margin-top:10px">📍 محدودهٔ حرکت و لوکیشن‌هایی که می‌توانم بیایم (روی نقشه یا دکمه‌ها بزن):</label>
+            <div id="hp_map" class="map-box"></div>
+            <div class="map-legend">
+              <span><i class="map-dot" style="background:#6C5CE7"></i>مبدأ و شعاع حرکت من</span>
+              <span><i class="map-dot" style="background:#00B894"></i>شهرهایی که می‌توانم بیایم</span>
+              <span><i class="map-dot" style="background:#9b95a8"></i>سایر شهرها (بزن تا اضافه شود)</span>
+            </div>
+            <div class="chips" id="hp_cities" style="margin-top:8px">
               ${CITIES.filter(c=>c.meet).map(c => {
                 const on = (d.can_cities||[]).includes(c.key) || (d.origin && d.origin.key === c.key);
                 return `<span class="chip ${on?"on":""}" data-hpcity="${c.key}">${esc(c.fa)}</span>`;
@@ -346,7 +422,6 @@ export function mount(root: HTMLElement, opts: DhOptions) {
 
     app.innerHTML = topbar() + `
       <header class="top"><span class="logo">🌿</span><div><b>دورهمی</b><small>هماهنگی راحتِ زمان و مکان با دوستان</small></div></header>
-      ${sharedProf ? `<div class="card"><h2>👯‍♀️ پروفایل و ساعت‌های آزادِ ${esc(sharedProf.name)}</h2>${renderProfileSummary(sharedProf)}</div>` : ""}
 
       <div class="card" id="prof_card">
         <div class="row" style="justify-content:space-between">
@@ -481,12 +556,19 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       p.data = p.data || {};
       wireWeekGrid(box, () => p.data.free_windows || [], (v) => { p.data.free_windows = v; }, "hpwin");
 
-      box.querySelectorAll("[data-hpcity]").forEach(el => el.onclick = () => {
-        const k = el.dataset.hpcity;
+      clearAuxMaps();
+      const toggleHpCity = (k) => {
         const arr = p.data.can_cities || (p.data.origin?.key ? [p.data.origin.key] : []);
         p.data.can_cities = arr.includes(k) ? arr.filter(x => x !== k) : [...arr, k];
-        el.classList.toggle("on", p.data.can_cities.includes(k));
-      });
+        box.querySelectorAll("[data-hpcity]").forEach(el => {
+          const ck = el.dataset.hpcity;
+          el.classList.toggle("on", (p.data.can_cities || []).includes(ck) || (p.data.origin && p.data.origin.key === ck));
+        });
+        const mapEl = document.getElementById("hp_map");
+        if (mapEl && mapEl._redrawMap) mapEl._redrawMap();
+      };
+      box.querySelectorAll("[data-hpcity]").forEach(el => el.onclick = () => toggleHpCity(el.dataset.hpcity));
+      mountZoneMap("hp_map", p.data, { onToggleCity: (c) => toggleHpCity(c.key) });
       const saveBtn = $("#hp_save");
       if (saveBtn) saveBtn.onclick = async () => {
         saveBtn.disabled = true;
@@ -510,6 +592,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       };
     }
 
+    if (sharedProf) bindProfileDetail(sharedProf);
     root.querySelectorAll("[data-kprof]").forEach(el => el.onclick = () => {
       const name = el.dataset.kprof;
       const p = KNOWN_PROFILES.find(x => x.name === name);
@@ -710,18 +793,30 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           }
         }},
       {k:"origin", t:"از کجا میای؟", draw: () => `
-        <h2>📍 از کجا راه میفتی؟</h2>
-        <p class="muted">نزدیک‌ترین شهر یا ایستگاه را انتخاب کن. آدرس دقیقت را نمی‌خواهیم.</p>
+        <h2>📍 از کجا راه میفتی و تا کجاها می‌تونی بیای؟</h2>
+        <p class="muted">نزدیک‌ترین شهر یا ایستگاهت را انتخاب کن تا محدودهٔ حرکتت روی نقشه مشخص شود.</p>
         <input type="text" id="f_cs" placeholder="جستجو: روتردام، Delft، لایدن…">
         <div class="list-sel" id="f_cl"></div>
-        <button class="btn line sm" id="f_geo" style="margin-top:8px">📡 از موقعیت گوشی‌ام (تقریبی، حدود ۵ کیلومتر)</button>
-        <div id="f_osel" style="margin-top:8px"></div>
-        <label class="f" style="margin-top:12px">📍 در کدام شهرها/لوکیشن‌ها راحتی که همدیگر را ببینیم؟ (هر چندتا که می‌تونی)</label>
-        <div class="chips" id="f_cancities">
+        <div class="row" style="margin-top:8px;justify-content:space-between;flex-wrap:wrap">
+          <button class="btn line sm" id="f_geo">📡 از موقعیت گوشی‌ام (حدود ۵ کیلومتر)</button>
+          <div id="f_osel"></div>
+        </div>
+        <label class="f" style="margin-top:12px">🗺️ نقشهٔ محدودهٔ تو و شهرهایی که راحتی همدیگر را ببینیم:</label>
+        <div id="f_orig_map" class="map-box"></div>
+        <div class="map-legend">
+          <span><i class="map-dot" style="background:#6C5CE7"></i>مبدأ و شعاع حرکت</span>
+          <span><i class="map-dot" style="background:#00B894"></i>شهرهایی که می‌توانم بیایم</span>
+        </div>
+        <div class="chips" id="f_cancities" style="margin-top:8px">
           ${CITIES.filter(c => c.meet).map(c => `<span class="chip ${(D.can_cities||[]).includes(c.key)?"on":""}" data-cancity="${c.key}">${esc(c.fa)}</span>`).join("")}
         </div>
         ${visT("origin","شهر و لوکیشن‌هایم را به بقیه نشان بده")}`,
         after: () => {
+          clearAuxMaps();
+          const refreshOrigMap = () => {
+            const mEl = document.getElementById("f_orig_map");
+            if (mEl && mEl._redrawMap) mEl._redrawMap();
+          };
           const drawCities = () => {
             const s = $("#f_cs").value.trim().toLowerCase();
             $("#f_cl").innerHTML = CITIES.filter(c => !s || c.fa.includes(s) || c.nl.toLowerCase().includes(s) || c.key.includes(s))
@@ -729,12 +824,19 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             $("#f_cl").querySelectorAll("[data-k]").forEach(el => el.onclick = () => {
               const c = cityByKey(el.dataset.k);
               D.origin = {key:c.key, fa:c.fa, lat:c.lat, lng:c.lng};
-              showSel(); drawCities();
+              showSel(); drawCities(); refreshOrigMap();
             });
           };
-          const showSel = () => $("#f_osel").innerHTML = D.origin ? `<span class="pill g">✓ ${esc(D.origin.fa)}</span>` : "";
+          const showSel = () => $("#f_osel").innerHTML = D.origin ? `<span class="pill g">✓ مبدأ: ${esc(D.origin.fa)}</span>` : "";
           $("#f_cs").oninput = drawCities; drawCities(); showSel();
-          multi("[data-cancity]", "can_cities");
+          const toggleCanCity = (k) => {
+            const arr = D.can_cities || [];
+            D.can_cities = arr.includes(k) ? arr.filter(x => x !== k) : [...arr, k];
+            root.querySelectorAll("[data-cancity]").forEach(el => el.classList.toggle("on", (D.can_cities||[]).includes(el.dataset.cancity)));
+            refreshOrigMap();
+          };
+          root.querySelectorAll("[data-cancity]").forEach(el => el.onclick = () => toggleCanCity(el.dataset.cancity));
+          mountZoneMap("f_orig_map", D, { onToggleCity: (c) => toggleCanCity(c.key) });
           $("#f_geo").onclick = () => {
             if (!navigator.geolocation) return toast("گوشی موقعیت نمی‌دهد");
             $("#f_geo").innerHTML = `<span class="spin"></span>`;
@@ -742,7 +844,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               const lat = Math.round(p.coords.latitude*20)/20, lng = Math.round(p.coords.longitude*20)/20;
               const near = CITIES.slice().sort((a,b)=>km({lat,lng},a)-km({lat,lng},b))[0];
               D.origin = {key:"geo", fa:"نزدیک " + near.fa, lat, lng, station:false};
-              showSel(); $("#f_geo").textContent = "📡 موقعیت گرفته شد ✓";
+              showSel(); refreshOrigMap(); $("#f_geo").textContent = "📡 موقعیت گرفته شد ✓";
             }, () => { toast("اجازهٔ موقعیت داده نشد"); $("#f_geo").textContent = "📡 از موقعیت گوشی‌ام"; }, {timeout:10000, maximumAge:600000});
           };
         },
@@ -787,8 +889,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         </div>
         <label class="f" style="margin-top:8px">⏰ توضیح ساعت دلخواه (اختیاری — مثلاً: شنبه ۱۴ تا ۱۹ یا جمعه بعد از کار)</label>
         <input type="text" id="f_fnote" maxlength="100" value="${esc(D.free_note||"")}" placeholder="مثلاً: یکشنبه‌ها از ساعت ۱۵ به بعد">
-        <label class="f" style="margin-top:10px">📍 کدام شهرها / لوکیشن‌ها می‌توانی بیایی؟</label>
-        <div class="chips" id="f_avcities">
+        <label class="f" style="margin-top:10px">🗺️ محدودهٔ حرکت و شهرهایی که می‌توانی بیایی (روی نقشه یا دکمه‌ها بزن):</label>
+        <div id="f_av_map" class="map-box"></div>
+        <div class="map-legend">
+          <span><i class="map-dot" style="background:#6C5CE7"></i>مبدأ و شعاع حرکت</span>
+          <span><i class="map-dot" style="background:#00B894"></i>شهرهایی که می‌توانم بیایم</span>
+        </div>
+        <div class="chips" id="f_avcities" style="margin-top:8px">
           ${CITIES.filter(c=>c.meet).map(c => `<span class="chip ${(D.can_cities||[]).includes(c.key)||(D.origin&&D.origin.key===c.key)?"on":""}" data-avcity="${c.key}">${esc(c.fa)}</span>`).join("")}
         </div>
         <label class="f">🕘 معمولاً تا چه ساعتی می‌تونی بمونی؟</label>
@@ -832,7 +939,19 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               refreshF();
             });
           }
-          multi("[data-avcity]", "can_cities");
+          clearAuxMaps();
+          const toggleAvCity = (k) => {
+            const arr = D.can_cities || [];
+            D.can_cities = arr.includes(k) ? arr.filter(x => x !== k) : [...arr, k];
+            root.querySelectorAll("[data-avcity]").forEach(el => {
+              const ck = el.dataset.avcity;
+              el.classList.toggle("on", (D.can_cities||[]).includes(ck) || (D.origin && D.origin.key === ck));
+            });
+            const mEl = document.getElementById("f_av_map");
+            if (mEl && mEl._redrawMap) mEl._redrawMap();
+          };
+          root.querySelectorAll("[data-avcity]").forEach(el => el.onclick = () => toggleAvCity(el.dataset.avcity));
+          mountZoneMap("f_av_map", D, { onToggleCity: (c) => toggleAvCity(c.key) });
           oneOf("[data-until]", v => D.until = v);
           oneOf("[data-night]", v => D.night_alone = v, ".opt");
         },
@@ -1164,7 +1283,10 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           ${t.over?` · <span style="color:var(--warn)">برای ${fa(t.over)} نفر بیشتر از سقفشان</span>`:` · <span style="color:var(--ok)">همه زیر سقف خودشان ✓</span>`}</div>
         </div>`).join("")}
         <div id="map"></div>
-        <p class="tiny">دایره‌های بنفش: از کجا می‌آیند (بی‌نام) · ستاره: شهر پیشنهادی.</p>
+        <div class="map-legend">
+          <span><i class="map-dot" style="background:#6C5CE7"></i>محدوده و مبدأ بچه‌ها</span>
+          <span><i class="map-dot" style="background:#00B894"></i>محدودهٔ شهرهای پیشنهادی (⭐ بهترین نقطهٔ مشترک)</span>
+        </div>
       </div>
       <div id="venues"></div>
       ${actTop.length?`<div class="card"><h2>✨ چه کاری بیشتر رأی آورده</h2><div class="chips">${actTop.map(([k,c])=>`<span class="pill">${esc((ACTIVITIES.find(a=>a[0]===k)||[,k])[1])} · ${fa(c)}</span>`).join("")}</div></div>`:""}
@@ -1181,9 +1303,39 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:18, attribution:"© OpenStreetMap"}).addTo(MAP);
       const pts = [];
       const groups = {};
-      (M.anon||[]).forEach(r => { if (r.origin && r.origin.lat) { const k = r.origin.lat+","+r.origin.lng; groups[k] = groups[k] || {lat:r.origin.lat,lng:r.origin.lng,n:0,fa:r.origin.fa}; groups[k].n++; } });
-      Object.values(groups).forEach(g => { L.circleMarker([g.lat,g.lng], {radius:7+g.n*3, color:"#6C5CE7", fillColor:"#6C5CE7", fillOpacity:.45, weight:2}).addTo(MAP).bindPopup(`${esc(g.fa)}: ${fa(g.n)} نفر`); pts.push([g.lat,g.lng]); });
-      A.hubs.slice(0,3).forEach((t,k) => { L.marker([t.h.lat,t.h.lng], {icon: L.divIcon({html:`<div style="font-size:${k?20:28}px;line-height:1">${k?"📍":"⭐"}</div>`, className:"", iconSize:[28,28], iconAnchor:[14,24]})}).addTo(MAP).bindPopup(esc(t.h.fa)); pts.push([t.h.lat,t.h.lng]); });
+      (M.anon||[]).forEach(r => {
+        if (r.origin && r.origin.lat) {
+          const k = r.origin.lat+","+r.origin.lng;
+          const maxMin = Number(r.max_min) || 45;
+          groups[k] = groups[k] || {lat:r.origin.lat,lng:r.origin.lng,n:0,fa:r.origin.fa,maxMin};
+          groups[k].n++;
+          groups[k].maxMin = Math.max(groups[k].maxMin, maxMin);
+        }
+      });
+      const bestHub = A.hubs[0]?.h;
+      Object.values(groups).forEach(g => {
+        // Shaded reach zone circle around each origin group
+        const rad = Math.max(10000, Math.min(60000, g.maxMin * 650));
+        L.circle([g.lat, g.lng], {radius:rad, color:"#6C5CE7", fillColor:"#6C5CE7", fillOpacity:.10, weight:1.5, dashArray:"5 5"}).addTo(MAP);
+        if (bestHub) {
+          L.polyline([[g.lat, g.lng], [bestHub.lat, bestHub.lng]], {color:"#6C5CE7", weight:2, opacity:.45, dashArray:"4 6"}).addTo(MAP);
+        }
+        L.circleMarker([g.lat,g.lng], {radius:8+g.n*3, color:"#fff", fillColor:"#6C5CE7", fillOpacity:.9, weight:2})
+          .addTo(MAP)
+          .bindTooltip(`${esc(g.fa)} (${fa(g.n)})`, {permanent:true, direction:"top", offset:[0,-6]});
+        pts.push([g.lat,g.lng]);
+      });
+      A.hubs.slice(0,3).forEach((t,k) => {
+        L.circle([t.h.lat, t.h.lng], {
+          radius: k === 0 ? 9000 : 6500,
+          color: k === 0 ? "#00B894" : "#6C5CE7",
+          fillColor: k === 0 ? "#00B894" : "#6C5CE7",
+          fillOpacity: k === 0 ? 0.22 : 0.12,
+          weight: 2
+        }).addTo(MAP);
+        L.marker([t.h.lat,t.h.lng], {icon: L.divIcon({html:`<div style="font-size:${k?20:28}px;line-height:1">${k?"📍":"⭐"}</div>`, className:"", iconSize:[28,28], iconAnchor:[14,24]})}).addTo(MAP).bindPopup(esc(t.h.fa));
+        pts.push([t.h.lat,t.h.lng]);
+      });
       if (pts.length) MAP.fitBounds(pts, {padding:[30,30], maxZoom:11}); else MAP.setView([52.0,4.5], 9);
     } catch(e){} });
   }
@@ -1353,5 +1505,5 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   root.addEventListener("click", onClick);
   window.addEventListener("popstate", route);
   claimGuestWork().finally(route);
-  return () => { dead = true; root.removeEventListener("click", onClick); window.removeEventListener("popstate", route); if (MAP) { try { MAP.remove(); } catch(e){} } };
+  return () => { dead = true; root.removeEventListener("click", onClick); window.removeEventListener("popstate", route); if (MAP) { try { MAP.remove(); } catch(e){} } clearAuxMaps(); };
 }

@@ -1,9 +1,51 @@
 import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import { admin } from '@/lib/supabase/admin';
 import { getSession } from '@/lib/supabase/server';
 
 const DIRECTORY_CODE = '__profiles__';
 const IGNORE_NAMES = new Set(['مهمان', 'تست']);
+const DH_FALLBACK_URL = 'https://healdibivptzehahdvig.supabase.co';
+const DH_FALLBACK_ANON = 'sb_publishable_PCopQgyzrd2CYNlQihNxDw_7v_PrV65';
+
+async function fetchFallbackRpcProfiles() {
+  const sb = createClient(DH_FALLBACK_URL, DH_FALLBACK_ANON, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const [{ data: dir }, { data: m1 }] = await Promise.all([
+    sb.rpc('dh_get', { p_code: DIRECTORY_CODE, p_admin: null }),
+    sb.rpc('dh_get', { p_code: '096be90f6c', p_admin: null }),
+  ]);
+  const byName = new Map<string, any>();
+  const ingest = (m: any, isReal: boolean) => {
+    if (!m || !Array.isArray(m.people)) return;
+    for (const p of m.people) {
+      const cleanName = String(p.name ?? '').trim();
+      if (!cleanName || IGNORE_NAMES.has(cleanName) || /^تست\b/i.test(cleanName)) continue;
+      const key = cleanName.toLowerCase();
+      const { id, name, member, ...restData } = p;
+      const prev = byName.get(key);
+      if (!prev) {
+        byName.set(key, {
+          name: cleanName,
+          data: { ...restData },
+          public_fields: Object.keys(restData),
+          updated_at: m.created_at,
+          meetups: isReal ? [{ code: m.code, title: m.title, final: m.final }] : [],
+        });
+      } else {
+        prev.data = { ...restData, ...prev.data };
+        if (isReal && !prev.meetups.some((x: any) => x.code === m.code)) {
+          prev.meetups.push({ code: m.code, title: m.title, final: m.final });
+        }
+      }
+    }
+  };
+  ingest(dir, false);
+  ingest(m1, true);
+  const recentMeetups = m1 ? [{ code: m1.code, title: m1.title, organizer_name: m1.organizer_name, final: m1.final }] : [];
+  return { profiles: [...byName.values()], recentMeetups };
+}
 
 async function getOrCreateDirectoryMeetupId(db: ReturnType<typeof admin>): Promise<string | null> {
   const { data: existing } = await db
@@ -96,12 +138,23 @@ export async function GET(req: Request) {
     .slice(0, 10)
     .map((m: any) => ({ code: m.code, title: m.title, organizer_name: m.organizer_name, final: m.final }));
 
-  if (onlyName) {
-    const found = byName.get(onlyName.toLowerCase()) ?? null;
-    return NextResponse.json({ profile: found, recentMeetups });
+  let profiles = [...byName.values()];
+  let finalMeetups = recentMeetups;
+
+  if (!profiles.length && !finalMeetups.length) {
+    const fb = await fetchFallbackRpcProfiles().catch(() => null);
+    if (fb) {
+      profiles = fb.profiles;
+      finalMeetups = fb.recentMeetups;
+    }
   }
 
-  return NextResponse.json({ profiles: [...byName.values()], recentMeetups });
+  if (onlyName) {
+    const found = profiles.find((p) => p.name.toLowerCase() === onlyName.toLowerCase()) ?? null;
+    return NextResponse.json({ profile: found, recentMeetups: finalMeetups });
+  }
+
+  return NextResponse.json({ profiles, recentMeetups: finalMeetups });
 }
 
 /**
@@ -119,8 +172,26 @@ export async function POST(req: Request) {
   if (!name) return NextResponse.json({ error: 'name_required' }, { status: 400 });
 
   const db = admin();
-  const dirId = await getOrCreateDirectoryMeetupId(db);
-  if (!dirId) return NextResponse.json({ error: 'db_error' }, { status: 500 });
+  const dirId = await getOrCreateDirectoryMeetupId(db).catch(() => null);
+  if (!dirId) {
+    // Fallback to public RPC on Dorehami DB when service role is configured for a different project
+    const sb = createClient(DH_FALLBACK_URL, DH_FALLBACK_ANON, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const cleanData = { ...data };
+    delete cleanData.avail;
+    const { data: res, error } = await sb.rpc('dh_respond', {
+      p_code: DIRECTORY_CODE,
+      p_edit: body.edit_token ?? null,
+      p_name: name,
+      p_data: cleanData,
+      p_public: publicFields.length
+        ? publicFields
+        : ['origin', 'can_cities', 'free_windows', 'free_note', 'modes', 'activities', 'hobbies', 'about'],
+    });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, name, edit_token: res?.edit_token ?? null });
+  }
 
   const { user } = await getSession().catch(() => ({ user: null }));
 
