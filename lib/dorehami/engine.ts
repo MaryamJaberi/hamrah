@@ -832,18 +832,18 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           </div>
 
           <div class="seg" style="margin-top:10px;margin-bottom:8px">
-            <button type="button" id="seg_open" class="on">🙋‍♀️ بدون تاریخ و مکان از پیش تعیین‌شده</button>
-            <button type="button" id="seg_fixed">📅 با تاریخ‌های پیشنهادی</button>
+            <button type="button" id="seg_open" class="on">🙋‍♀️ بدون روز و ساعت مشخص (هر کس بگوید کِی و کجا)</button>
+            <button type="button" id="seg_fixed">📅 با روز و ساعت مشخص (مثلاً شنبه ساعت ۱۵)</button>
           </div>
 
           <div id="c_open_note" class="okbox" style="margin-top:6px">
-            ✨ <b>حالت باز («بریم بیرون؟»):</b> تاریخ، ساعت و مکان از اول تعیین نمی‌شود؛ کد و لینک اشتراک‌گذاری بهت می‌دهد و هر کس وارد شود می‌گوید کِی و تا چه شعاعی روی نقشه می‌تواند بیاید.
+            ✨ <b>حالت باز («بریم بیرون؟»):</b> تاریخ، ساعت و مکان از اول تعیین نمی‌شود؛ کد و لینک اشتراک‌گذاری بهت می‌دهد و هر کس وارد شود می‌گوید کِی و کدام شهرها روی نقشه می‌تواند بیاید.
           </div>
 
           <div id="c_fixed_box" style="display:none;margin-top:8px;padding:10px;background:#f8f7fc;border-radius:12px">
-            <b style="font-size:13.5px;display:block;margin-bottom:6px">📅 روزهای پیشنهادی:</b>
+            <b style="font-size:13.5px;display:block;margin-bottom:6px">📅 روز و ساعت مشخص (مثلاً این شنبه ساعت ۱۵:۰۰):</b>
             <div id="c_opts"></div>
-            <button class="btn ghost sm" id="c_add" style="margin-top:6px">+ یک روز دیگر</button>
+            <button class="btn ghost sm" id="c_add" style="margin-top:6px">+ یک روز و ساعت دیگر</button>
           </div>
 
           <details style="margin-top:8px">
@@ -858,20 +858,9 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           <div id="c_err"></div>
           <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:12px">
             <button class="btn grow" id="c_go_open">🙋‍♀️ ساخت دورهمی باز و گرفتن کد و لینک ✨</button>
-            <button class="btn ghost" id="c_go">📅 ساخت با تاریخ</button>
+            <button class="btn ghost" id="c_go">📅 ساخت با روز و ساعت مشخص</button>
           </div>
         </div>
-      </div>
-
-      <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-        <div class="row" style="gap:10px">
-          <div class="av-sm" style="background:${colorOf(myName||"من")};width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800">${esc((myName||"؟").slice(0,1))}</div>
-          <div>
-            <b style="font-size:15px;display:block">${myName ? `پروفایل من: ${esc(myName)}` : "پروفایل شخصی و ساعت‌های آزاد من"}</b>
-            <span class="tiny">${myEmail ? `📧 متصل به ${esc(myEmail)} · ذخیره در کش` : myName ? "ذخیره در کش این مرورگر · برای دائمی شدن به جیمیل وصل کن" : "ساعت آزاد و محدودهٔ حرکتت را یک بار تنظیم کن و به جیمیلت وصل کن"}</span>
-          </div>
-        </div>
-        <button type="button" class="btn ghost sm" id="open_my_prof_btn">${myName ? "✏️ پروفایل و نقشهٔ من" : "📧 ساخت / اتصال به جیمیل"}</button>
       </div>
 
       ${mine.length ? `
@@ -984,7 +973,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         const r = await rpc("dh_create", {p_title:title, p_note:$("#c_note").value, p_organizer:orgName, p_options:good, p_women_only:wo});
         store.set("dh_"+r.code, {title, organizer_name: orgName, admin:r.admin_token});
         go(`/d/${r.code}?admin=${r.admin_token}&new=1`);
-      } catch(e){ $("#c_err").innerHTML = `<div class="err">${esc(errMsg(e))}</div>`; b.disabled=false; b.textContent = forceOpen ? "🙋‍♀️ ساخت دورهمی باز و گرفتن کد و لینک ✨" : "📅 ساخت با تاریخ"; }
+      } catch(e){ $("#c_err").innerHTML = `<div class="err">${esc(errMsg(e))}</div>`; b.disabled=false; b.textContent = forceOpen ? "🙋‍♀️ ساخت دورهمی باز و گرفتن کد و لینک ✨" : "📅 ساخت با روز و ساعت مشخص"; }
     }
     $("#c_go").onclick = () => createMeetup(false);
     $("#c_go_open").onclick = () => createMeetup(true);
