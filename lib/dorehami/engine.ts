@@ -205,18 +205,24 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   }
 
   function renderTimeLocLinker(dataObj, prefix) {
+    const hasRules = Array.isArray(dataObj.time_locations) && dataObj.time_locations.length > 0;
     return `
-      <div style="background:#faf9ff;border:1.5px dashed #dcd4f5;border-radius:14px;padding:10px 12px;margin-top:10px">
-        <b style="font-size:13px;display:block;margin-bottom:4px">🔗 وصل کردن مکان‌ها به زمان‌ها (اختیاری — مثلاً وسط هفته فقط شهر خودم، آخر هفته شهرهای دیگر):</b>
+      <div style="margin-top:8px;display:flex;justify-content:flex-end">
+        <button type="button" class="btn line sm" id="${prefix}_tl_toggle" style="font-size:12px;padding:4px 10px">
+          🔗 وصل کردن شهر به زمان خاص (اختیاری) ${hasRules ? `· ${fa(dataObj.time_locations.length)}` : ""}
+        </button>
+      </div>
+      <div id="${prefix}_tl_box" style="display:${hasRules?"block":"none"};background:#faf9ff;border:1.5px dashed #dcd4f5;border-radius:14px;padding:10px 12px;margin-top:6px">
+        <span class="tiny" style="display:block;margin-bottom:6px">مثلاً آخر هفته‌ها می‌توانم شهر دورتر بیایم، وسط هفته فقط یک شهر خاص:</span>
         <div class="row" style="gap:6px;flex-wrap:wrap">
-          <select id="${prefix}_tl_when" style="flex:1.2;min-width:150px">
+          <select id="${prefix}_tl_when" style="flex:1.2;min-width:140px">
             ${TIME_BUCKETS.map(([k,l]) => `<option value="${k}">${esc(l)}</option>`).join("")}
             ${(Array.isArray(dataObj.free_windows) ? dataObj.free_windows : []).map(w => `<option value="${esc(w)}">🗓️ ${esc(fmtWin(w))}</option>`).join("")}
           </select>
-          <select id="${prefix}_tl_city" style="flex:1;min-width:130px">
+          <select id="${prefix}_tl_city" style="flex:1;min-width:120px">
             ${CITIES.filter(c => c.meet || (dataObj.origin && dataObj.origin.key === c.key) || (dataObj.can_cities||[]).includes(c.key)).map(c => `<option value="${c.key}">📍 ${esc(c.fa)}</option>`).join("")}
           </select>
-          <button type="button" class="btn ghost sm" id="${prefix}_tl_add">+ وصل کن</button>
+          <button type="button" class="btn ghost sm" id="${prefix}_tl_add">+ ثبت</button>
         </div>
         <div id="${prefix}_tl_list"></div>
       </div>`;
@@ -230,14 +236,20 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       const can = Array.isArray(dataObj.can_cities) ? dataObj.can_cities : [];
       const items = [];
       if (orig && orig.fa) {
-        items.push(`<span class="city-tag orig">📍 مبدأ: ${esc(orig.fa)}</span>`);
+        items.push(`<span class="city-tag orig">📍 مبدأ: ${esc(orig.fa)} <i data-rmorig="1" title="حذف مبدأ">✕</i></span>`);
       }
       can.forEach(k => {
         if (orig && orig.key === k) return;
         const c = cityByKey(k);
         if (c) items.push(`<span class="city-tag">✓ ${esc(c.fa)} <i data-rmcity="${esc(k)}" title="حذف">✕</i></span>`);
       });
-      box.innerHTML = items.join("") || `<span class="tiny">روی شهرهای نقشه بزن یا از لیست بالا چند شهر اضافه کن.</span>`;
+      box.innerHTML = items.join("") || `<span class="tiny">بدون نیاز به مبدأ، می‌توانی فقط شهرهایی که اوکی هستی بیایی را انتخاب کنی.</span>`;
+      box.querySelectorAll("[data-rmorig]").forEach(x => x.onclick = () => {
+        delete dataObj.origin;
+        refreshTags();
+        const mEl = document.getElementById(mapId);
+        if (mEl && mEl._redrawMap) mEl._redrawMap();
+      });
       box.querySelectorAll("[data-rmcity]").forEach(x => x.onclick = () => {
         const rk = x.dataset.rmcity;
         dataObj.can_cities = (dataObj.can_cities || []).filter(c => c !== rk);
@@ -251,9 +263,6 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       if (!k) return;
       const c = cityByKey(k);
       if (!c) return;
-      if (!dataObj.origin || !dataObj.origin.lat) {
-        dataObj.origin = { key: c.key, fa: c.fa, lat: c.lat, lng: c.lng };
-      }
       const arr = Array.isArray(dataObj.can_cities) ? dataObj.can_cities : [];
       if (!arr.includes(k)) dataObj.can_cities = [...arr, k];
       refreshTags();
@@ -296,6 +305,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     }
 
     // Time-Location linker
+    const tlToggle = container.querySelector(`#${prefix}_tl_toggle`);
+    const tlBox = container.querySelector(`#${prefix}_tl_box`);
+    if (tlToggle && tlBox) {
+      tlToggle.onclick = () => {
+        tlBox.style.display = tlBox.style.display === "none" ? "block" : "none";
+      };
+    }
     const tlList = container.querySelector(`#${prefix}_tl_list`);
     const drawTl = () => {
       if (!tlList) return;
@@ -600,18 +616,18 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             ${tags ? `<div class="summary-tags">${tags}</div>` : ""}
 
             <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #d8caec">
-              <b style="font-size:13.5px;display:block;margin-bottom:4px">📍 شهر مبدأ، شهرهای دیگر و دایرهٔ حرکت (اختیاری) روی نقشه:</b>
-              <div class="row" style="gap:6px;margin-bottom:6px">
-                <select id="pm_origin_sel" style="flex:1">
-                  <option value="">انتخاب شهر مبدأ اصلی…</option>
-                  ${CITIES.map(c => `<option value="${c.key}" ${(d.origin && d.origin.key===c.key)?"selected":""}>📍 مبدأ: ${esc(c.fa)} (${esc(c.nl)})</option>`).join("")}
-                </select>
-              </div>
+              <b style="font-size:13.5px;display:block;margin-bottom:4px">📍 شهرهایی که اوکی هستم بیایم (مبدأ و دایره اختیاری است):</b>
               ${renderLocationControl(d, "pm_loc")}
               <div id="hp_map" class="map-box"></div>
-              <div class="map-legend">
-                <span><i class="map-dot" style="background:#6C5CE7"></i>مبدأ و دایرهٔ حرکت (اختیاری)</span>
-                <span><i class="map-dot" style="background:#00B894"></i>شهرهای انتخاب‌شده (روی نقشه هم می‌توانی چند شهر را بزنی)</span>
+              <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+                <div class="map-legend">
+                  <span><i class="map-dot" style="background:#00B894"></i>شهرهای انتخاب‌شده</span>
+                  <span><i class="map-dot" style="background:#6C5CE7"></i>مبدأ و دایره (اختیاری)</span>
+                </div>
+                <select id="pm_origin_sel" style="width:auto;padding:4px 8px;font-size:12px">
+                  <option value="">🏠 مبدأ (اختیاری / بدون مبدأ)</option>
+                  ${CITIES.map(c => `<option value="${c.key}" ${(d.origin && d.origin.key===c.key)?"selected":""}>🏠 مبدأ: ${esc(c.fa)}</option>`).join("")}
+                </select>
               </div>
               ${renderTimeLocLinker(d, "pm_loc")}
 
@@ -686,10 +702,12 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           const c = cityByKey(origSel.value);
           if (c) {
             p.data.origin = { key: c.key, fa: c.fa, lat: c.lat, lng: c.lng };
-            helpers.refreshTags();
-            const mEl = document.getElementById("hp_map");
-            if (mEl && mEl._redrawMap) mEl._redrawMap();
+          } else {
+            delete p.data.origin;
           }
+          helpers.refreshTags();
+          const mEl = document.getElementById("hp_map");
+          if (mEl && mEl._redrawMap) mEl._redrawMap();
         };
         const toggleHpCity = (k) => {
           const arr = p.data.can_cities || [];
@@ -1091,23 +1109,27 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             }
           }
         }},
-      {k:"origin", t:"از کجا میای؟", draw: () => `
-        <h2>📍 از کجا راه میفتی و کدام شهرها می‌توانی بیایی؟</h2>
-        <p class="muted">نزدیک‌ترین شهر یا ایستگاه مبدأ را انتخاب کن. از منوی زیر می‌توانی چند شهر دیگر را هم به نقشه اضافه کنی (کشیدن دایره اختیاری است):</p>
-        <input type="text" id="f_cs" placeholder="جستجوی شهر مبدأ: روتردام، Delft، لایدن…">
-        <div class="list-sel" id="f_cl"></div>
-        <div class="row" style="margin-top:8px;justify-content:space-between;flex-wrap:wrap">
-          <button class="btn line sm" id="f_geo">📡 از موقعیت گوشی‌ام (حدود ۵ کیلومتر)</button>
-          <div id="f_osel"></div>
-        </div>
-        <label class="f" style="margin-top:12px">🗺️ شهرهای انتخابی و محدودهٔ حرکت روی نقشه:</label>
+      {k:"origin", t:"کجاها می‌تونی؟", draw: () => `
+        <h2>📍 کدام شهرها برایت خوب است؟ (مبدأ اختیاری است)</h2>
+        <p class="muted">لازم نیست حتماً مبدأ را وارد کنی یا به بقیه نشان بدهی؛ می‌توانی فقط شهرهایی که اوکی هستی بیایی را روی نقشه یا از منو انتخاب کنی:</p>
         ${renderLocationControl(D, "f_orig")}
         <div id="f_orig_map" class="map-box"></div>
         <div class="map-legend">
-          <span><i class="map-dot" style="background:#6C5CE7"></i>مبدأ و دایرهٔ شعاع حرکت (اختیاری)</span>
-          <span><i class="map-dot" style="background:#00B894"></i>شهرهای انتخاب‌شده (روی نقشه هم می‌توانی چند شهر را بزنی)</span>
+          <span><i class="map-dot" style="background:#00B894"></i>شهرهایی که اوکی هستم بیایم</span>
+          <span><i class="map-dot" style="background:#6C5CE7"></i>مبدأ و دایرهٔ حرکت (اختیاری)</span>
         </div>
-        ${visT("origin","شهر و محدوده‌ام را به بقیه نشان بده")}`,
+        <details style="margin-top:8px" open>
+          <summary class="tiny" style="cursor:pointer;color:var(--p);font-weight:700">🏠 تعیین شهر مبدأ (اختیاری — لازم نیست مبدأ داشته باشی یا نشان بدهی)</summary>
+          <div style="margin-top:8px">
+            <input type="text" id="f_cs" placeholder="جستجوی شهر مبدأ: روتردام، Delft، لایدن…">
+            <div class="list-sel" id="f_cl"></div>
+            <div class="row" style="margin-top:8px;justify-content:space-between;flex-wrap:wrap">
+              <button class="btn line sm" id="f_geo">📡 از موقعیت گوشی‌ام (حدود ۵ کیلومتر)</button>
+              <div id="f_osel"></div>
+            </div>
+          </div>
+        </details>
+        ${visT("origin","شهرهای انتخابی‌ام را با اسمم به بقیه نشان بده")}`,
         after: () => {
           clearAuxMaps();
           const helpers = wireLocationAndTimeControls(root, D, "f_orig", "f_orig_map");
@@ -1145,7 +1167,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             }, () => { toast("اجازهٔ موقعیت داده نشد"); $("#f_geo").textContent = "📡 از موقعیت گوشی‌ام"; }, {timeout:10000, maximumAge:600000});
           };
         },
-        read: () => { if (!D.origin) return "یک شهر انتخاب کن تا بتوانیم جای منصفانه پیدا کنیم."; }},
+        read: () => { if (!D.origin && !(D.can_cities && D.can_cities.length)) return "حداقل یک شهر که اوکی هستی بیایی (یا شهر مبدأ) را انتخاب کن."; }},
       {k:"modes", t:"چطور میای؟", draw: () => `
         <h2>🚆 چطور میای؟</h2>
         <p class="muted">هر چندتا که می‌شود انتخاب کن.</p>

@@ -117,6 +117,7 @@ test('open "بریم بیرون؟" meetup without preset dates + loading previou
   // In open mode, pick free day/time windows and link a location to a time
   await page.locator('[data-fwin="sat:evening"]').click();
   await page.locator('[data-fwin="sun:afternoon"]').click();
+  await page.locator('#f_av_tl_toggle').click();
   await page.locator('#f_av_tl_when').selectOption('wknd');
   await page.locator('#f_av_tl_city').selectOption('delft');
   await page.locator('#f_av_tl_add').click();
