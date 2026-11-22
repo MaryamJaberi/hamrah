@@ -181,18 +181,11 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   const fmtTimeBucket = (k) => (TIME_BUCKETS.find(x => x[0] === k) || [, fmtWin(k)])[1];
 
   const EVENT_IDEAS = [
-    { k: "cafe", icon: "☕", label: "کافه و گپ", title: "کافه و گپ دوستانه ☕", note: "بریم یه کافه بشینیم، قهوه بخوریم و گپ بزنیم ☕", target: "group" },
-    { k: "run", icon: "🏃‍♀️", label: "دویدن صبحگاهی", title: "همراه برای دویدن صبحگاهی 🏃‍♀️", note: "دنبال یک همراه می‌گردم صبح‌ها با هم بریم بدویم 🏃‍♀️", target: "pair" },
-    { k: "walk", icon: "🌳", label: "پیاده‌روی و طبیعت", title: "پیاده‌روی در طبیعت و پارک 🌳", note: "پیاده‌روی در پارک و هواخوری 🌿", target: "group" },
-    { k: "food", icon: "🍽️", label: "رستوران و شام", title: "دورهمی شام یا ناهار 🍽️", note: "بریم یک رستوران خوب و خوشمزه با هم 🍽️", target: "group" },
-    { k: "boardgame", icon: "🎲", label: "بردگیم و مافیا", title: "شب بازی و بردگیم 🎲", note: "دورهمی برای بازی‌های فکری و مافیا 🎲", target: "group" },
-    { k: "study", icon: "📚", label: "هم‌پای مطالعه و کار", title: "هم‌پای مطالعه و کتابخوانی 📚", note: "بریم کتابخونه یا کافه با هم مطالعه و کار کنیم 📚", target: "pair" },
-    { k: "picnic", icon: "🧺", label: "پیک‌نیک و پارک", title: "پیک‌نیک و دورهمی در پارک 🧺", note: "بریم پارک بشینیم و عصرانه بخوریم 🧺", target: "group" },
-    { k: "cinema", icon: "🎬", label: "سینما و فیلم", title: "سینما و تماشای فیلم 🎬", note: "بریم با هم فیلم ببینیم 🎬", target: "group" },
-    { k: "bike", icon: "🚴", label: "دوچرخه‌سواری", title: "دوچرخه‌سواری با هم 🚴", note: "یه گشت با دوچرخه در مسیرهای قشنگ 🚴", target: "pair" },
-    { k: "sport", icon: "🏸", label: "ورزش و تحرک", title: "ورزش یا بدمینتون 🏸", note: "ورزش و تحرک دو یا چند نفره 🏸", target: "pair" },
-    { k: "museum", icon: "🖼️", label: "موزه و گالری", title: "موزه‌گردی و نمایشگاه 🖼️", note: "بازدید از موزه و نمایشگاه‌های هنری 🖼️", target: "group" },
-    { k: "market", icon: "🛍️", label: "خرید و بازارگردی", title: "گشت در بازار و خرید 🛍️", note: "بازارگردی و خرید با هم 🛍️", target: "pair" },
+    { k: "cafe", icon: "☕", label: "کافه", title: "کافه و گپ دوستانه ☕", note: "بریم یه کافه بشینیم و گپ بزنیم ☕", target: "group" },
+    { k: "run", icon: "🏃‍♀️", label: "دویدن", title: "همراه برای دویدن صبحگاهی 🏃‍♀️", note: "دنبال یک همراه می‌گردم صبح‌ها با هم بریم بدویم 🏃‍♀️", target: "pair" },
+    { k: "walk", icon: "🌳", label: "پیاده‌روی", title: "پیاده‌روی در طبیعت و پارک 🌳", note: "پیاده‌روی در پارک و هواخوری 🌿", target: "group" },
+    { k: "boardgame", icon: "🎲", label: "بردگیم", title: "شب بازی و بردگیم 🎲", note: "دورهمی برای بازی‌های فکری و مافیا 🎲", target: "group" },
+    { k: "food", icon: "🍽️", label: "شام/غذا", title: "دورهمی شام یا ناهار 🍽️", note: "بریم یک رستوران خوب با هم 🍽️", target: "group" },
   ];
 
   function detectActivityIcon(t) {
@@ -875,74 +868,51 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         </div>
 
         <div id="create_pane">
-          <div style="background:#f9f8fe;border:1.5px solid #ebe4fb;border-radius:16px;padding:12px;margin-bottom:12px">
-            <label class="f" style="margin-top:0;font-size:13.5px;font-weight:700">💡 چه قراری یا ایونتی در ذهن داری؟ (یکی را بزن تا پر شود، یا خودت بنویس):</label>
-            <div class="chips" id="c_idea_chips" style="gap:6px;margin-top:6px">
-              ${EVENT_IDEAS.map(idea => `
-                <span class="idea-chip" data-idea="${idea.k}">
-                  ${idea.icon} ${esc(idea.label)}
-                </span>
-              `).join("")}
+          <div class="row" style="gap:8px;flex-wrap:wrap">
+            <div style="flex:1;min-width:130px">
+              <label class="f" style="margin-top:2px">اسم تو</label>
+              <input type="text" id="c_org" maxlength="40" placeholder="مثلاً مریم" value="${esc(myName)}">
             </div>
-            <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #e1d8f7">
-              <span class="tiny" style="font-weight:700">⏰ بازهٔ زمانی پیشنهادی (اختیاری):</span>
-              <div class="chips" id="c_time_chips" style="gap:5px;margin-top:4px">
-                <span class="chip sm" data-ctime="🌅 صبح‌ها">🌅 صبح‌ها</span>
-                <span class="chip sm" data-ctime="☀️ بعدازظهر و عصر">☀️ عصرها</span>
-                <span class="chip sm" data-ctime="🌙 شب‌ها">🌙 شب‌ها</span>
-                <span class="chip sm" data-ctime="🎉 آخر هفته‌ها">🎉 آخر هفته‌ها</span>
-                <span class="chip sm" data-ctime="🗓️ هر زمانی که بشود">🗓️ زمان شناور</span>
+            <div style="flex:1.5;min-width:180px">
+              <label class="f" style="margin-top:2px">عنوان یا موضوع قرار</label>
+              <input type="text" id="c_title" maxlength="80" placeholder="مثلاً: دویدن صبحگاهی، کافه و گپ…">
+              <div class="quick-ideas" id="c_idea_chips">
+                ${EVENT_IDEAS.map(idea => `
+                  <span class="qidea" data-idea="${idea.k}">${idea.icon} ${esc(idea.label)}</span>
+                `).join("")}
               </div>
             </div>
           </div>
 
-          <div class="row" style="gap:8px;flex-wrap:wrap">
-            <div style="flex:1;min-width:140px">
-              <label class="f" style="margin-top:2px">اسم تو (برگزارکننده)</label>
-              <input type="text" id="c_org" maxlength="40" placeholder="مثلاً مریم" value="${esc(myName)}">
+          <div class="row" style="gap:6px;margin-top:4px;flex-wrap:wrap">
+            <div class="seg sm" style="margin:0;flex:1;min-width:160px">
+              <button type="button" id="c_tgt_group" class="on">👥 دورهمی گروهی</button>
+              <button type="button" id="c_tgt_pair">👯‍♀️ همراه دونفره (۱ به ۱)</button>
             </div>
-            <div style="flex:1.4;min-width:180px">
-              <label class="f" style="margin-top:2px">عنوان ایونت یا قرار</label>
-              <input type="text" id="c_title" maxlength="80" placeholder="مثلاً: کافه و گپ، دویدن صبحگاهی…">
+            <div class="seg sm" style="margin:0;flex:1;min-width:160px">
+              <button type="button" id="seg_open" class="on">🙋‍♀️ زمان شناور</button>
+              <button type="button" id="seg_fixed">📅 روز و ساعت مشخص</button>
             </div>
-          </div>
-
-          <div class="row" style="gap:8px;margin-top:10px;margin-bottom:6px;align-items:center;flex-wrap:wrap">
-            <span class="tiny" style="font-weight:700">مدل همراهی:</span>
-            <div class="seg sm" style="margin:0;flex:1;min-width:210px">
-              <button type="button" id="c_tgt_group" class="on">👥 دورهمی گروهی (چند نفره)</button>
-              <button type="button" id="c_tgt_pair">👯‍♀️ همراه دو‌نفره (هم‌پا / ۱ به ۱)</button>
-            </div>
-          </div>
-
-          <div class="seg" style="margin-top:10px;margin-bottom:8px">
-            <button type="button" id="seg_open" class="on">🙋‍♀️ بدون روز و ساعت مشخص (هر کس بگوید کِی و کجا)</button>
-            <button type="button" id="seg_fixed">📅 با روز و ساعت مشخص (مثلاً شنبه ساعت ۱۵)</button>
-          </div>
-
-          <div id="c_open_note" class="okbox" style="margin-top:6px">
-            ✨ <b>حالت باز («بریم بیرون؟»):</b> تاریخ، ساعت و مکان از اول تعیین نمی‌شود؛ کد و لینک اشتراک‌گذاری بهت می‌دهد و هر کس وارد شود می‌گوید کِی و کدام شهرها روی نقشه می‌تواند بیاید.
           </div>
 
           <div id="c_fixed_box" style="display:none;margin-top:8px;padding:10px;background:#f8f7fc;border-radius:12px">
-            <b style="font-size:13.5px;display:block;margin-bottom:6px">📅 روز و ساعت مشخص (مثلاً این شنبه ساعت ۱۵:۰۰):</b>
+            <b style="font-size:13px;display:block;margin-bottom:6px">📅 انتخاب تاریخ و ساعت:</b>
             <div id="c_opts"></div>
-            <button class="btn ghost sm" id="c_add" style="margin-top:6px">+ یک روز و ساعت دیگر</button>
+            <button class="btn ghost sm" id="c_add" style="margin-top:4px">+ یک تاریخ دیگر</button>
           </div>
 
-          <details style="margin-top:8px">
-            <summary class="tiny" style="cursor:pointer;color:var(--p);font-weight:700">⚙️ توضیح اختیاری یا فقط خانم‌ها…</summary>
-            <div style="margin-top:8px">
-              <label class="f">توضیح کوتاه (اختیاری)</label>
-              <textarea id="c_note" maxlength="500" placeholder="مثلاً: بیایید بگید چه روزها و ساعت‌هایی و کجاها می‌تونید بیاید 🌿"></textarea>
-              <div class="opt" id="c_wo" style="margin-top:8px"><span class="e">👩</span><div><b>این دورهمی فقط برای خانم‌هاست</b><span>روی صفحهٔ دعوت نوشته می‌شود</span></div></div>
+          <details style="margin-top:6px">
+            <summary class="tiny" style="cursor:pointer;color:var(--muted)">+ توضیح اختیاری یا فقط خانم‌ها…</summary>
+            <div style="margin-top:6px">
+              <input type="text" id="c_note" maxlength="300" placeholder="توضیح کوتاه (اختیاری): مثلاً صبح‌ها قبل از کار…">
+              <div class="opt" id="c_wo" style="margin-top:6px"><span class="e">👩</span><div><b>فقط برای خانم‌ها</b></div></div>
             </div>
           </details>
 
           <div id="c_err"></div>
-          <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:12px">
-            <button class="btn grow" id="c_go_open" style="font-size:15px;padding:12px 18px">🚀 ساخت دورهمی باز و گرفتن کد و لینک ✨</button>
-            <button class="btn ghost sm" id="c_go">📅 ساخت با روز و ساعت مشخص</button>
+          <div class="row" style="gap:8px;margin-top:10px">
+            <button class="btn grow" id="c_go_open" style="font-size:15px;padding:11px 18px">🚀 ساخت قرار و دریافت لینک اشتراک ✨</button>
+            <button class="btn line sm" id="c_go">📅 با روز و ساعت مشخص</button>
           </div>
         </div>
       </div>
@@ -1039,7 +1009,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         } catch(e){ toast(errMsg(e)); }
       };
     }
-    let openSchedule = false;
+    let openSchedule = true;
     const opts = [];
     const addOpt = (d="", t="15:00") => { opts.push({d,t}); drawOpts(); };
     function drawOpts(){
@@ -1129,8 +1099,8 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       };
     });
 
-    async function createMeetup(forceOpen = false) {
-      const isOpen = forceOpen || openSchedule;
+    async function createMeetup(forceOpen?: boolean) {
+      const isOpen = forceOpen !== undefined ? forceOpen : openSchedule;
       const orgName = $("#c_org").value.trim();
       const rawTitle = $("#c_title").value.trim();
       const defaultTitle = currentTarget === "pair"
@@ -1139,7 +1109,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       const title = rawTitle || defaultTitle;
       const good = isOpen ? [] : opts.filter(o => o.d).slice(0,10);
       if (!isOpen && !good.length) { $("#c_err").innerHTML = `<div class="err">حداقل یک روز انتخاب کن (یا دکمهٔ «بریم بیرون؟ بدون تعیین وقت» را بزن).</div>`; return; }
-      const b = forceOpen ? $("#c_go_open") : $("#c_go"); b.disabled = true; b.innerHTML = `<span class="spin"></span>`;
+      const b = isOpen ? $("#c_go_open") : $("#c_go"); b.disabled = true; b.innerHTML = `<span class="spin"></span>`;
       let note = ($("#c_note")?.value || "").trim();
       if (currentTarget === "pair" && !note.includes("همراه دو‌نفره")) {
         note = `[همراه دو‌نفره] ${note}`.trim();
@@ -1151,11 +1121,11 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       } catch(e){
         $("#c_err").innerHTML = `<div class="err">${esc(errMsg(e))}</div>`;
         b.disabled=false;
-        b.textContent = forceOpen ? (currentTarget === "pair" ? "👯‍♀️ ساخت قرار همراهی و گرفتن کد و لینک ✨" : "🙋‍♀️ ساخت دورهمی باز و گرفتن کد و لینک ✨") : "📅 ساخت با روز و ساعت مشخص";
+        b.textContent = isOpen ? (currentTarget === "pair" ? "👯‍♀️ ساخت قرار همراهی و گرفتن کد و لینک ✨" : "🙋‍♀️ ساخت دورهمی باز و گرفتن کد و لینک ✨") : "📅 ساخت با روز و ساعت مشخص";
       }
     }
     $("#c_go").onclick = () => createMeetup(false);
-    $("#c_go_open").onclick = () => createMeetup(true);
+    $("#c_go_open").onclick = () => createMeetup(openSchedule);
   }
 
   /* ============ meetup page ============ */
