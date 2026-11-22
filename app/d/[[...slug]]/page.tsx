@@ -25,11 +25,12 @@ export default async function DorehamiPage() {
   let prefill: ReturnType<typeof buildPrefill> = null;
   if (user && profile && !profile.is_banned) {
     me = { id: user.id, name: profile.name ?? '' };
-    const [{ data: op }, { data: ls }] = await Promise.all([
+    const [{ data: op }, { data: ls }, { data: saved }] = await Promise.all([
       supabase.from('outing_profiles').select('*').eq('user_id', user.id).maybeSingle(),
       supabase.from('outing_lifestyle').select('*').eq('user_id', user.id).maybeSingle(),
+      supabase.from('dh_member_prefs').select('name, data, public_fields').eq('user_id', user.id).maybeSingle(),
     ]);
-    prefill = buildPrefill(profile.name, op, ls);
+    prefill = buildPrefill(profile.name, op, ls, saved);
   }
   return <DorehamiClient user={me} prefill={prefill} />;
 }

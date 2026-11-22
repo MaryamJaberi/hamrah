@@ -78,7 +78,7 @@ Check out branch mo-outings. Do not change migration 010 if it is merged; add 01
 After merging, the production database needs migration 020 once (Claude could not apply it to production):
 ```
 Read spec/AGENTS.md and spec/12-DOREHAMI.fa.md. Apply supabase/migrations/020_dorehami.sql to the PRODUCTION
-Supabase project (it is idempotent; it needs 001–003 and the tables of 010). Then run supabase/tests/020_dorehami_test.sql
+Supabase project, then 021_dorehami_prefs.sql (both idempotent; they need 001–003 and the tables of 010). Then run supabase/tests/020_dorehami_test.sql
 against hamrah-dev only, and npx playwright test e2e/dorehami.spec.ts against npm start. Tell me the results. Change nothing else.
 ```
 
