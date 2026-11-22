@@ -53,7 +53,7 @@ async function fetchFallbackRpcProfiles() {
   ingest(m1, true);
   const uniqueProfiles = Array.from(new Set(byName.values()));
   const recentMeetups = m1
-    ? [{ code: m1.code, title: m1.title, organizer_name: m1.organizer_name, count: m1.count ?? (m1.people?.length || 0), final: m1.final, created_at: m1.created_at }]
+    ? [{ code: m1.code, title: m1.title, organizer_name: m1.organizer_name, count: m1.count ?? (m1.people?.length || 0), final: m1.final, expires_at: null, is_archived: false, created_at: m1.created_at }]
     : [];
   return { profiles: uniqueProfiles, recentMeetups };
 }
@@ -168,7 +168,14 @@ export async function GET(req: Request) {
   }
 
   const recentMeetups = (meetups ?? [])
-    .filter((m: any) => !/e2e|تست دورهمی/i.test(m.title ?? ''))
+    .filter((m: any) => {
+      if (/e2e|تست دورهمی/i.test(m.title ?? '')) return false;
+      const isArchived = Boolean(m.is_archived || m.final?.archived);
+      if (isArchived) return false;
+      const exp = m.expires_at || m.final?.expires_at;
+      if (exp && new Date(exp).getTime() < Date.now()) return false;
+      return true;
+    })
     .slice(0, 10)
     .map((m: any) => ({
       code: m.code,
@@ -176,6 +183,8 @@ export async function GET(req: Request) {
       organizer_name: m.organizer_name,
       count: countByMeetupId.get(m.id) ?? 0,
       final: m.final,
+      expires_at: m.expires_at || m.final?.expires_at || null,
+      is_archived: Boolean(m.is_archived || m.final?.archived),
       created_at: m.created_at,
     }));
 

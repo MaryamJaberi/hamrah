@@ -905,11 +905,15 @@ export function mount(root: HTMLElement, opts: DhOptions) {
 
           <details style="margin-bottom:14px;background:#faf9fe;border-radius:12px;border:1.5px dashed #ded7f2;padding:9px 12px">
             <summary style="cursor:pointer;color:var(--p);font-size:13px;font-weight:700;user-select:none;list-style:none;display:flex;align-items:center;justify-content:space-between">
-              <span>⚙️ تنظیمات بیشتر (توضیح دلخواه، فقط خانم‌ها)</span>
+              <span>⚙️ تنظیمات بیشتر (توضیح، تاریخ انقضا، فقط خانم‌ها)</span>
               <span style="font-size:11px;opacity:0.7">▼</span>
             </summary>
             <div style="margin-top:10px;padding-top:8px;border-top:1px solid #eeeaf8">
-              <input type="text" id="c_note" maxlength="300" placeholder="توضیح کوتاه (اختیاری): مثلاً صبح‌ها قبل از کار در پارک…" style="margin-bottom:8px">
+              <label class="f" style="margin-top:0">توضیح کوتاه (اختیاری)</label>
+              <input type="text" id="c_note" maxlength="300" placeholder="مثلاً: صبح‌ها قبل از کار در پارک…" style="margin-bottom:8px">
+              <label class="f">⏰ تاریخ انقضا یا مهلت ایونت (اختیاری)</label>
+              <input type="date" id="c_expires" style="margin-bottom:4px">
+              <span class="tiny" style="color:var(--muted);display:block;margin-bottom:8px">بعد از این تاریخ، ایونت خودکار از دید عموم برداشته می‌شود.</span>
               <div class="opt" id="c_wo"><span class="e">👩</span><div><b>فقط برای خانم‌ها</b></div></div>
             </div>
           </details>
@@ -948,34 +952,39 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               </div>
               <div id="meetups_list_container">
                 ${mine.map(m => {
-                  const org = m.organizer_name ? `برگزارکننده: ${m.organizer_name}` : "دورهمی گروهی";
-                  const cnt = m.count != null ? `${fa(m.count)} نفر اعلام آمادگی کرده‌اند` : "مشاهده و ثبت ترجیحات";
-                  const icon = detectActivityIcon(m.title);
-                  const isPair = detectTargetType(m.title, m.note) === "pair";
-                  let cat = "other";
-                  if (["☕","🍽️"].includes(icon)) cat = "cafe";
-                  else if (["🏃‍♀️","🏸","🚴"].includes(icon)) cat = "sport";
-                  else if (["🎲"].includes(icon)) cat = "game";
-                  else if (["🌳","🧺"].includes(icon)) cat = "walk";
-                  return `
-                  <a class="meetup-item" data-mcat="${cat}" href="/d/${esc(m.code)}${m.admin && m.admin !== "account"?`?admin=${esc(m.admin)}`:""}">
-                    <div style="display:flex;align-items:center;gap:12px">
-                      <div class="av-sm" style="background:${colorOf(m.organizer_name||'د')};width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px;flex:none">${icon}</div>
-                      <div>
-                        <div class="row" style="gap:6px;margin-bottom:3px;flex-wrap:wrap;align-items:center">
-                          <b style="font-size:15px">${esc(m.title || (m.organizer_name ? "دورهمی " + m.organizer_name : "قرار دورهمی"))}</b>
-                          <code class="tiny" style="background:#eeeaf8;padding:1px 6px;border-radius:6px;color:var(--p)">#${esc(m.code)}</code>
-                          <span class="pill sm" style="background:${isPair?"#fff0f6":"#f0f5ff"};color:${isPair?"#d63384":"#0d6efd"}">${isPair ? "👯‍♀️ همراه دونفره" : "👥 گروهی"}</span>
-                        </div>
-                        <div class="tiny">👤 برگزارکننده: <b>${esc(m.organizer_name || "دوستان")}</b> · 👥 ${cnt}</div>
-                      </div>
+              const org = m.organizer_name ? `برگزارکننده: ${m.organizer_name}` : "دورهمی گروهی";
+              const cnt = m.count != null ? `${fa(m.count)} نفر اعلام آمادگی کرده‌اند` : "مشاهده و ثبت ترجیحات";
+              const icon = detectActivityIcon(m.title);
+              const isPair = detectTargetType(m.title, m.note) === "pair";
+              const isArchived = Boolean(m.is_archived || m.final?.archived);
+              const expDate = m.expires_at || m.final?.expires_at;
+              const isExpired = Boolean(m.is_expired || (expDate && new Date(expDate).getTime() < Date.now()));
+              let cat = "other";
+              if (["☕","🍽️"].includes(icon)) cat = "cafe";
+              else if (["🏃‍♀️","🏸","🚴"].includes(icon)) cat = "sport";
+              else if (["🎲"].includes(icon)) cat = "game";
+              else if (["🌳","🧺"].includes(icon)) cat = "walk";
+              return `
+              <a class="meetup-item" data-mcat="${cat}" href="/d/${esc(m.code)}${m.admin && m.admin !== "account"?`?admin=${esc(m.admin)}`:""}">
+                <div style="display:flex;align-items:center;gap:12px">
+                  <div class="av-sm" style="background:${colorOf(m.organizer_name||'د')};width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px;flex:none">${icon}</div>
+                  <div>
+                    <div class="row" style="gap:6px;margin-bottom:3px;flex-wrap:wrap;align-items:center">
+                      <b style="font-size:15px">${esc(m.title || (m.organizer_name ? "دورهمی " + m.organizer_name : "قرار دورهمی"))}</b>
+                      <code class="tiny" style="background:#eeeaf8;padding:1px 6px;border-radius:6px;color:var(--p)">#${esc(m.code)}</code>
+                      <span class="pill sm" style="background:${isPair?"#fff0f6":"#f0f5ff"};color:${isPair?"#d63384":"#0d6efd"}">${isPair ? "👯‍♀️ همراه دونفره" : "👥 گروهی"}</span>
+                      ${isArchived ? '<span class="pill sm" style="background:#fff3d4;color:#8a5a00">📦 آرشیو</span>' : ''}
+                      ${isExpired ? '<span class="pill sm" style="background:#ffe3e3;color:#c92a2a">⏰ منقضی</span>' : ''}
                     </div>
-                    <div class="row" style="gap:4px">
-                      ${m.final?'<span class="pill g">قطعی</span>':""}
-                      ${m.admin?'<span class="pill">مدیریت ⚙️</span>':'<span class="pill" style="font-weight:700">منم می‌تونم بیام 🙋‍♀️</span>'}
-                    </div>
-                  </a>`;
-                }).join("")}
+                    <div class="tiny">👤 برگزارکننده: <b>${esc(m.organizer_name || "دوستان")}</b> · 👥 ${cnt}${expDate && !isExpired && !isArchived ? ` · ⏰ تا ${fmtDate(expDate)}` : ''}</div>
+                  </div>
+                </div>
+                <div class="row" style="gap:4px">
+                  ${m.final?'<span class="pill g">قطعی</span>':""}
+                  ${m.admin?'<span class="pill">مدیریت ⚙️</span>':'<span class="pill" style="font-weight:700">منم می‌تونم بیام 🙋‍♀️</span>'}
+                </div>
+              </a>`;
+            }).join("")}
               </div>
             ` : `
               <div style="text-align:center;padding:20px;background:#f9f9fc;border-radius:12px;color:var(--muted)">
@@ -1163,7 +1172,18 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         note = `[همراه دو‌نفره] ${note}`.trim();
       }
       try {
-        const r = await rpc("dh_create", {p_title:title, p_note:note, p_organizer:orgName, p_options:good, p_women_only:wo});
+        const expDate = $("#c_expires")?.value || null;
+      const r = await rpc("dh_create", {p_title:title, p_note:note, p_organizer:orgName, p_options:good, p_women_only:wo});
+        store.set("dh_"+r.code, {title, organizer_name: orgName, admin:r.admin_token});
+        if (expDate) {
+          try {
+            await fetch("/api/d/manage", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ code: r.code, admin_token: r.admin_token, action: "edit", expires_at: expDate })
+            });
+          } catch(e){}
+        }
         store.set("dh_"+r.code, {title, organizer_name: orgName, admin:r.admin_token});
         go(`/d/${r.code}?admin=${r.admin_token}&new=1`);
       } catch(e){
@@ -1222,8 +1242,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   }
   function createdPage(){
     const adminLink = `${linkFor(M.code)}?admin=${ADMIN}`;
+    const isArchived = Boolean(M.is_archived || M.final?.archived);
+    const expDate = M.expires_at || M.final?.expires_at;
+    const isExpired = Boolean(M.is_expired || (expDate && new Date(expDate).getTime() < Date.now()));
     app.innerHTML = topbar() + `
       <header class="top"><span class="logo">${detectActivityIcon(M.title)}</span><div><b>${esc(M.title)}</b><small>ساخته شد · کد: #${esc(M.code)}</small></div></header>
+      ${isArchived ? `<div class="okbox" style="margin:8px 0;background:#fff8e6;border-color:#f6d899;color:#8a5a00">📦 <b>این دورهمی آرشیو شده است</b> (فقط برای افراد دارای لینک قابل مشاهده است).</div>` : ""}
+      ${isExpired ? `<div class="okbox" style="margin:8px 0;background:#fff0f0;border-color:#ffd0d0;color:#c92a2a">⏰ <b>مهلت یا تاریخ انقضای این دورهمی به پایان رسیده است.</b></div>` : (expDate ? `<div class="tiny" style="color:var(--muted);margin-bottom:6px">⏰ مهلت اعلام حضور تا: <b>${fmtDate(expDate)}</b></div>` : "")}
       <div class="card"><div class="hero-e">🎉</div><h1>آماده است!</h1>
         <p>کد یا لینک زیر را برای دوستانت بفرست تا ساعت‌ها و محدودهٔ مکانشان را روی نقشه بزنند:</p>${shareButtons()}</div>
       <div class="card"><h2>🔑 لینک مخصوص خودت (برگزارکننده)</h2>
@@ -1704,8 +1729,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   function resultPage(){
     const A = analyse();
     const my = store.get("dh_"+CODE) || {};
+    const isArchived = Boolean(M.is_archived || M.final?.archived);
+    const expDate = M.expires_at || M.final?.expires_at;
+    const isExpired = Boolean(M.is_expired || (expDate && new Date(expDate).getTime() < Date.now()));
     app.innerHTML = topbar() + `
       <header class="top"><span class="logo">${detectActivityIcon(M.title)}</span><div><b>${esc(M.title)}</b><small>${fa(A.n)} نفر فرم را پر کرده‌اند${M.organizer_name?" · برگزارکننده: "+esc(M.organizer_name):""}</small></div></header>
+      ${isArchived ? `<div class="okbox" style="margin:8px 0;background:#fff8e6;border-color:#f6d899;color:#8a5a00">📦 <b>این دورهمی آرشیو شده است</b> (از لیست عمومی پنهان است اما با لینک در دسترس است).</div>` : ""}
+      ${isExpired ? `<div class="okbox" style="margin:8px 0;background:#fff0f0;border-color:#ffd0d0;color:#c92a2a">⏰ <b>مهلت اعلام حضور یا تاریخ انقضای این دورهمی به پایان رسیده است.</b></div>` : (expDate ? `<div class="tiny" style="color:var(--muted);margin-bottom:6px">⏰ مهلت اعلام حضور تا: <b>${fmtDate(expDate)}</b></div>` : "")}
       ${detectTargetType(M.title, M.note) === "pair" ? `<div class="pill sm" style="background:#fff0f6;color:#d63384;display:inline-block;margin-bottom:8px">👯‍♀️ قرار همراهی دو‌نفره (هم‌پا)</div>` : ""}
       ${M.note ? `<div class="okbox" style="margin:8px 0;background:#f6f4fe;border-color:#d7cbfa">💬 <b>پیام ${esc(M.organizer_name || "برگزارکننده")}:</b> ${esc(M.note.replace(/^\[همراه دو‌نفره\]\s*/, ""))}</div>` : ""}
       ${M.final ? finalCard(M.final) : ""}
@@ -1985,6 +2015,10 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const bestSlot = A.slots[0], bestHub = A.hubs[0];
     const sel = (bestSlot && !f.d) ? bestSlot.i : M.options.findIndex(o => o.d === f.d && o.t === f.t);
     const defaultDate = f.d || new Date(Date.now() + 2*86400000).toISOString().slice(0,10);
+    const isArchived = Boolean(M.is_archived || M.final?.archived);
+    const expDate = M.expires_at || M.final?.expires_at;
+    const expVal = expDate ? new Date(expDate).toISOString().slice(0,10) : "";
+
     return `<div class="card"><h2>🔑 قطعی کردن (فقط تو می‌بینی)</h2>
       <label class="f">روز</label>
       ${M.options.length
@@ -1999,6 +2033,32 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       <button class="btn block" id="a_go" style="margin-top:12px">✅ قطعی کن</button>
       ${M.final?`<button class="btn line sm" id="a_clear" style="margin-top:8px">برداشتن قطعی</button>`:""}
       <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
+
+      <h3 style="margin:0 0 6px">⚙️ تنظیمات برگزارکننده (ویرایش و آرشیو)</h3>
+      <p class="tiny muted" style="margin-bottom:10px">می‌توانی مشخصات دورهمی را ویرایش کنی، تاریخ انقضا بگذاری، یا آن را آرشیو یا پاک کنی:</p>
+      
+      <div class="row" style="gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <button type="button" class="btn sm" id="a_btn_edit">✏️ ویرایش عنوان و مهلت انقضا</button>
+        <button type="button" class="btn line sm" id="a_btn_archive">
+          ${isArchived ? "📤 بازگردانی از آرشیو" : "📦 آرشیو کردن دورهمی"}
+        </button>
+      </div>
+
+      <div id="a_edit_box" style="display:none;background:#f9f8fe;border:1.5px solid #ded7f2;border-radius:14px;padding:12px;margin-bottom:12px">
+        <label class="f" style="margin-top:0">عنوان یا موضوع دورهمی</label>
+        <input type="text" id="ae_title" maxlength="80" value="${esc(M.title || "")}">
+        <label class="f">توضیح کوتاه</label>
+        <input type="text" id="ae_note" maxlength="300" value="${esc(M.note || "")}">
+        <label class="f">⏰ تاریخ انقضا / مهلت (اختیاری)</label>
+        <input type="date" id="ae_expires" value="${esc(expVal)}">
+        <span class="tiny" style="color:var(--muted);display:block;margin-bottom:8px">بعد از این تاریخ، ایونت خودکار از دید عموم برداشته می‌شود.</span>
+        <div class="opt ${M.women_only ? "on" : ""}" id="ae_wo" style="margin-bottom:8px"><span class="e">👩</span><div><b>فقط برای خانم‌ها</b></div></div>
+        <div class="row" style="gap:8px;margin-top:8px">
+          <button type="button" class="btn sm" id="ae_save">💾 ذخیرهٔ تغییرات</button>
+          <button type="button" class="btn line sm" id="ae_cancel">انصراف</button>
+        </div>
+      </div>
+
       <button class="btn line sm" id="a_delete" style="color:var(--bad)">🗑️ پاک کردن کل دورهمی و همهٔ جواب‌ها</button></div>`;
   }
   function bindAdmin(A){
@@ -2015,9 +2075,92 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       } catch(e){ toast(errMsg(e)); }
     };
     if ($("#a_clear")) $("#a_clear").onclick = async () => { try { await rpc("dh_finalize", {p_code:CODE, p_admin:ADMIN, p_final:null}); M.final = null; resultPage(); } catch(e){ toast(errMsg(e)); } };
+    
+    // Edit meetup
+    const editBtn = $("#a_btn_edit");
+    const editBox = $("#a_edit_box");
+    if (editBtn && editBox) {
+      editBtn.onclick = () => {
+        editBox.style.display = editBox.style.display === "none" ? "block" : "none";
+      };
+      let woVal = Boolean(M.women_only);
+      if ($("#ae_wo")) $("#ae_wo").onclick = (e) => {
+        woVal = !woVal;
+        $("#ae_wo").classList.toggle("on", woVal);
+      };
+      if ($("#ae_cancel")) $("#ae_cancel").onclick = () => {
+        editBox.style.display = "none";
+      };
+      if ($("#ae_save")) $("#ae_save").onclick = async () => {
+        const title = ($("#ae_title")?.value || "").trim();
+        if (!title) return toast("عنوان نمی‌تواند خالی باشد");
+        const note = ($("#ae_note")?.value || "").trim();
+        const expires_at = $("#ae_expires")?.value || null;
+        const b = $("#ae_save"); b.disabled = true; b.innerHTML = `<span class="spin"></span>`;
+        try {
+          const res = await fetch("/api/d/manage", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ code: CODE, admin_token: ADMIN, action: "edit", title, note, expires_at, women_only: woVal })
+          });
+          const j = await res.json();
+          if (j.error) throw new Error(j.error);
+          M.title = title; M.note = note; M.women_only = woVal; M.expires_at = expires_at;
+          if (!M.final) M.final = {};
+          M.final.expires_at = expires_at;
+          toast("تغییرات ذخیره شد ✓");
+          resultPage();
+        } catch(e){
+          toast(errMsg(e));
+          b.disabled = false;
+          b.textContent = "💾 ذخیرهٔ تغییرات";
+        }
+      };
+    }
+
+    // Archive / Unarchive meetup
+    const arcBtn = $("#a_btn_archive");
+    if (arcBtn) {
+      arcBtn.onclick = async () => {
+        const isArchived = Boolean(M.is_archived || M.final?.archived);
+        const msg = isArchived
+          ? "این دورهمی از آرشیو خارج شده و دوباره فعال شود؟"
+          : "این دورهمی آرشیو شود؟ (از لیست عمومی پنهان می‌شود اما با لینک قابل دسترسی است)";
+        if (!confirm(msg)) return;
+        arcBtn.disabled = true;
+        try {
+          const res = await fetch("/api/d/manage", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ code: CODE, admin_token: ADMIN, action: "archive", is_archived: !isArchived })
+          });
+          const j = await res.json();
+          if (j.error) throw new Error(j.error);
+          M.is_archived = !isArchived;
+          if (!M.final) M.final = {};
+          M.final.archived = !isArchived;
+          toast(!isArchived ? "دورهمی آرشیو شد 📦" : "دورهمی فعال شد 📤");
+          resultPage();
+        } catch(e){
+          toast(errMsg(e));
+          arcBtn.disabled = false;
+        }
+      };
+    }
+
+    // Delete meetup
     $("#a_delete").onclick = async () => {
       if (!confirm("کل دورهمی و همهٔ جواب‌ها برای همیشه پاک شود؟")) return;
-      try { await rpc("dh_delete_meetup", {p_code:CODE, p_admin:ADMIN}); try { localStorage.removeItem("dh_"+CODE); } catch(e){} go("/d"); } catch(e){ toast(errMsg(e)); }
+      try {
+        await fetch("/api/d/manage", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ code: CODE, admin_token: ADMIN, action: "delete" })
+        }).catch(() => null);
+        try { await rpc("dh_delete_meetup", {p_code:CODE, p_admin:ADMIN}); } catch(e){}
+        try { localStorage.removeItem("dh_"+CODE); } catch(e){}
+        go("/d");
+      } catch(e){ toast(errMsg(e)); }
     };
   }
 

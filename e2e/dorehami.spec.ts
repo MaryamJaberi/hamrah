@@ -133,3 +133,46 @@ test('open "بریم بیرون؟" meetup without preset dates + loading previou
   await page.locator('#a_delete').click();
   await expect(page).toHaveURL(/\/d$/);
 });
+
+test('creator: expiry date, edit details, archive/unarchive, and delete', async ({ page }) => {
+  test.skip(!hasDb, 'no test backend configured');
+  page.on('dialog', (d) => (d.message().includes('واتس') ? d.dismiss() : d.accept()));
+  await page.goto('/d');
+  await page.locator('#c_title').fill('ایونت تست مدیریت');
+  await page.locator('#c_org').fill('مریم تست');
+  await page.locator('#c_go_open').click();
+  await expect(page.getByRole('heading', { name: 'آماده است!' })).toBeVisible();
+
+  // Go to result page with admin token
+  const url = page.url();
+  const codeMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  expect(codeMatch).toBeTruthy();
+  const code = codeMatch![1];
+  const urlObj = new URL(url);
+  const adminToken = urlObj.searchParams.get('admin');
+  expect(adminToken).toBeTruthy();
+
+  await page.goto(`/d/${code}?admin=${adminToken}&tab=share`);
+  await expect(page.locator('#a_btn_edit')).toBeVisible();
+
+  // Edit title and note
+  await page.locator('#a_btn_edit').click();
+  await expect(page.locator('#a_edit_box')).toBeVisible();
+  await page.locator('#ae_title').fill('ایونت تست ویرایش‌شده');
+  await page.locator('#ae_save').click();
+  await expect(page.getByText('تغییرات ذخیره شد')).toBeVisible();
+  await expect(page.getByText('ایونت تست ویرایش‌شده')).toBeVisible();
+
+  // Archive meetup
+  await page.locator('[data-tab=share]').click();
+  await page.locator('#a_btn_archive').click();
+  await expect(page.getByText(/این دورهمی آرشیو شده است/)).toBeVisible();
+
+  // Unarchive meetup
+  await page.locator('#a_btn_archive').click();
+  await expect(page.getByText('دورهمی فعال شد')).toBeVisible();
+
+  // Delete meetup
+  await page.locator('#a_delete').click();
+  await expect(page).toHaveURL(/\/d$/);
+});
