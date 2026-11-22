@@ -884,6 +884,16 @@ export function mount(root: HTMLElement, opts: DhOptions) {
                 </span>
               `).join("")}
             </div>
+            <div style="margin-top:10px;padding-top:8px;border-top:1px dashed #e1d8f7">
+              <span class="tiny" style="font-weight:700">⏰ بازهٔ زمانی پیشنهادی (اختیاری):</span>
+              <div class="chips" id="c_time_chips" style="gap:5px;margin-top:4px">
+                <span class="chip sm" data-ctime="🌅 صبح‌ها">🌅 صبح‌ها</span>
+                <span class="chip sm" data-ctime="☀️ بعدازظهر و عصر">☀️ عصرها</span>
+                <span class="chip sm" data-ctime="🌙 شب‌ها">🌙 شب‌ها</span>
+                <span class="chip sm" data-ctime="🎉 آخر هفته‌ها">🎉 آخر هفته‌ها</span>
+                <span class="chip sm" data-ctime="🗓️ هر زمانی که بشود">🗓️ زمان شناور</span>
+              </div>
+            </div>
           </div>
 
           <div class="row" style="gap:8px;flex-wrap:wrap">
@@ -931,43 +941,57 @@ export function mount(root: HTMLElement, opts: DhOptions) {
 
           <div id="c_err"></div>
           <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:12px">
-            <button class="btn grow" id="c_go_open">🙋‍♀️ ساخت دورهمی باز و گرفتن کد و لینک ✨</button>
-            <button class="btn ghost" id="c_go">📅 ساخت با روز و ساعت مشخص</button>
+            <button class="btn grow" id="c_go_open" style="font-size:15px;padding:12px 18px">🚀 ساخت دورهمی باز و گرفتن کد و لینک ✨</button>
+            <button class="btn ghost sm" id="c_go">📅 ساخت با روز و ساعت مشخص</button>
           </div>
         </div>
       </div>
 
       ${mine.length ? `
         <div class="card">
-          <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+          <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:4px">
             <h2 style="margin:0">🌿 ایونت‌ها و قرارهای دوستان</h2>
             <span class="tiny">می‌توانی وارد شوی و زمان و مکانت را بفرستی</span>
           </div>
-          <p class="muted tiny" style="margin-top:2px;margin-bottom:12px">روی هر ایونت بزن تا ساعت‌های آزاد و شهرهایت را بفرستی؛ سیستم بهترین زمان و شهر مشترک را پیدا می‌کند:</p>
-          ${mine.map(m => {
-            const org = m.organizer_name ? `برگزارکننده: ${m.organizer_name}` : "دورهمی گروهی";
-            const cnt = m.count != null ? `${fa(m.count)} نفر اعلام آمادگی کرده‌اند` : "مشاهده و ثبت ترجیحات";
-            const icon = detectActivityIcon(m.title);
-            const isPair = detectTargetType(m.title, m.note) === "pair";
-            return `
-            <a class="meetup-item" href="/d/${esc(m.code)}${m.admin && m.admin !== "account"?`?admin=${esc(m.admin)}`:""}">
-              <div style="display:flex;align-items:flex-start;gap:10px">
-                <span style="font-size:26px;line-height:1;margin-top:2px">${icon}</span>
-                <div>
-                  <div class="row" style="gap:6px;margin-bottom:4px;flex-wrap:wrap;align-items:center">
-                    <b style="font-size:15.5px">${esc(m.title || (m.organizer_name ? "دورهمی " + m.organizer_name : "قرار دورهمی"))}</b>
-                    <code class="tiny" style="background:#eeeaf8;padding:1px 6px;border-radius:6px;color:var(--p)">#${esc(m.code)}</code>
-                    <span class="pill sm" style="background:${isPair?"#fff0f6":"#f0f5ff"};color:${isPair?"#d63384":"#0d6efd"}">${isPair ? "👯‍♀️ همراه دونفره" : "👥 گروهی"}</span>
+          <p class="muted tiny" style="margin-top:2px;margin-bottom:8px">روی هر ایونت بزن تا ساعت‌های آزاد و شهرهایت را بفرستی؛ سیستم بهترین زمان و شهر مشترک را پیدا می‌کند:</p>
+          <div class="chips" id="meetups_filter_bar" style="gap:5px;margin:6px 0 10px">
+            <span class="chip sm on" data-mfilter="all">همه (${fa(mine.length)})</span>
+            <span class="chip sm" data-mfilter="cafe">☕ کافه و غذا</span>
+            <span class="chip sm" data-mfilter="sport">🏃‍♀️ ورزش و دویدن</span>
+            <span class="chip sm" data-mfilter="game">🎲 بازی و مافیا</span>
+            <span class="chip sm" data-mfilter="walk">🌳 پیاده‌روی و پارک</span>
+          </div>
+          <div id="meetups_list_container">
+            ${mine.map(m => {
+              const org = m.organizer_name ? `برگزارکننده: ${m.organizer_name}` : "دورهمی گروهی";
+              const cnt = m.count != null ? `${fa(m.count)} نفر اعلام آمادگی کرده‌اند` : "مشاهده و ثبت ترجیحات";
+              const icon = detectActivityIcon(m.title);
+              const isPair = detectTargetType(m.title, m.note) === "pair";
+              let cat = "other";
+              if (["☕","🍽️"].includes(icon)) cat = "cafe";
+              else if (["🏃‍♀️","🏸","🚴"].includes(icon)) cat = "sport";
+              else if (["🎲"].includes(icon)) cat = "game";
+              else if (["🌳","🧺"].includes(icon)) cat = "walk";
+              return `
+              <a class="meetup-item" data-mcat="${cat}" href="/d/${esc(m.code)}${m.admin && m.admin !== "account"?`?admin=${esc(m.admin)}`:""}">
+                <div style="display:flex;align-items:center;gap:12px">
+                  <div class="av-sm" style="background:${colorOf(m.organizer_name||'د')};width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px;flex:none">${icon}</div>
+                  <div>
+                    <div class="row" style="gap:6px;margin-bottom:3px;flex-wrap:wrap;align-items:center">
+                      <b style="font-size:15.5px">${esc(m.title || (m.organizer_name ? "دورهمی " + m.organizer_name : "قرار دورهمی"))}</b>
+                      <code class="tiny" style="background:#eeeaf8;padding:1px 6px;border-radius:6px;color:var(--p)">#${esc(m.code)}</code>
+                      <span class="pill sm" style="background:${isPair?"#fff0f6":"#f0f5ff"};color:${isPair?"#d63384":"#0d6efd"}">${isPair ? "👯‍♀️ همراه دونفره" : "👥 گروهی"}</span>
+                    </div>
+                    <div class="tiny">👤 برگزارکننده: <b>${esc(m.organizer_name || "دوستان")}</b> · 👥 ${cnt}</div>
                   </div>
-                  <div class="tiny">👤 ${esc(org)} · 👥 ${cnt}</div>
                 </div>
-              </div>
-              <div class="row" style="gap:4px">
-                ${m.final?'<span class="pill g">قطعی</span>':""}
-                ${m.admin?'<span class="pill">مدیریت</span>':'<span class="pill">ورود و ثبت ساعت ←</span>'}
-              </div>
-            </a>`;
-          }).join("")}
+                <div class="row" style="gap:4px">
+                  ${m.final?'<span class="pill g">قطعی</span>':""}
+                  ${m.admin?'<span class="pill">مدیریت ⚙️</span>':'<span class="pill" style="font-weight:700">منم می‌تونم بیام 🙋‍♀️</span>'}
+                </div>
+              </a>`;
+            }).join("")}
+          </div>
         </div>` : ""}
     `;
     bindLoginLinks();
@@ -1040,6 +1064,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       $("#seg_fixed")?.classList.toggle("on", !isOpen);
       if ($("#c_open_note")) $("#c_open_note").style.display = isOpen ? "block" : "none";
       if ($("#c_fixed_box")) $("#c_fixed_box").style.display = isOpen ? "none" : "block";
+      updateTargetUI(currentTarget);
     };
     if ($("#seg_open")) $("#seg_open").onclick = () => setSegMode(true);
     if ($("#seg_fixed")) $("#seg_fixed").onclick = () => setSegMode(false);
@@ -1053,7 +1078,11 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       $("#c_tgt_pair")?.classList.toggle("on", tgt === "pair");
       const btnOpen = $("#c_go_open");
       if (btnOpen) {
-        btnOpen.textContent = tgt === "pair" ? "👯‍♀️ ساخت قرار همراهی و گرفتن کد و لینک ✨" : "🙋‍♀️ ساخت دورهمی باز و گرفتن کد و لینک ✨";
+        if (!openSchedule) {
+          btnOpen.textContent = "📅 ساخت با روز و ساعت مشخص ✨";
+        } else {
+          btnOpen.textContent = tgt === "pair" ? "👯‍♀️ ایجاد قرار همراهی و گرفتن لینک اشتراک ✨" : "🚀 ساخت دورهمی باز و گرفتن کد و لینک ✨";
+        }
       }
     };
     if ($("#c_tgt_group")) $("#c_tgt_group").onclick = () => updateTargetUI("group");
@@ -1072,6 +1101,31 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           }
           if (idea.target) updateTargetUI(idea.target);
         }
+      };
+    });
+
+    $("#c_time_chips")?.querySelectorAll("[data-ctime]").forEach(tc => {
+      tc.onclick = () => {
+        $("#c_time_chips").querySelectorAll("[data-ctime]").forEach(x => x.classList.remove("on"));
+        tc.classList.add("on");
+        const val = tc.dataset.ctime;
+        const noteEl = $("#c_note");
+        if (noteEl) {
+          const cur = (noteEl.value || "").replace(/\s*\(زمان پیشنهادی:.*?\)/g, "").trim();
+          noteEl.value = `${cur ? cur + " · " : ""}(زمان پیشنهادی: ${val})`.trim();
+        }
+      };
+    });
+
+    $("#meetups_filter_bar")?.querySelectorAll("[data-mfilter]").forEach(b => {
+      b.onclick = () => {
+        $("#meetups_filter_bar").querySelectorAll("[data-mfilter]").forEach(x => x.classList.remove("on"));
+        b.classList.add("on");
+        const f = b.dataset.mfilter;
+        $("#meetups_list_container")?.querySelectorAll(".meetup-item").forEach(item => {
+          const match = f === "all" || item.dataset.mcat === f;
+          item.style.display = match ? "flex" : "none";
+        });
       };
     });
 
@@ -1331,8 +1385,25 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         <div class="chips">${Object.entries(UNTIL_L).map(([k,l])=>`<span class="chip ${D.until===k?"on":""}" data-until="${k}">${l}</span>`).join("")}</div>
         <label class="f">🌙 تنها برگشتن در تاریکی؟</label>
         <div class="opts">${Object.entries({ok:["😌","راحتم"],early:["🌇","ترجیح می‌دهم قبل از تاریکی برگردم"],ride:["🤝","اگر کسی هم‌مسیر باشد یا برساند راحت‌ترم"]}).map(([k,[e,l]])=>`<div class="opt ${D.night_alone===k?"on":""}" data-night="${k}"><span class="e">${e}</span><div><b>${l}</b></div></div>`).join("")}</div>
-        ${visT("avail","روزها و ساعت‌هایی که می‌تونم را با اسمم نشان بده")}`,
+        ${visT("avail","روزها و ساعت‌هایی که می‌تونم را با اسمم نشان بده")}
+        <div style="margin-top:14px;background:#f3effe;border:1.5px dashed #cdbbf5;border-radius:14px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div>
+            <b style="font-size:13px;color:var(--p);display:block">⚡ می‌خواهی سریع‌تر تمام شود؟</b>
+            <span class="tiny">ساعت‌ها و شهرهایت را زدی؟ می‌توانی بدون پاسخ به سؤالات غذا یا الکل همین حالا ثبت کنی:</span>
+          </div>
+          <button type="button" class="btn sm" id="f_fast_done" style="background:var(--ok);color:#fff">ثبت سریع و بررسی نهایی ←</button>
+        </div>`,
         after: () => {
+          const fastDone = $("#f_fast_done");
+          if (fastDone) {
+            fastDone.onclick = () => {
+              const err = steps[i].read && steps[i].read();
+              if (err) { $("#f_err").innerHTML = `<div class="err">${esc(err)}</div>`; return; }
+              i = steps.length - 1; // jump to review
+              draw();
+              scrollTo(0, 0);
+            };
+          }
           root.querySelectorAll("[data-av]").forEach(el => el.onclick = () => {
             const [i,v] = el.dataset.av.split(":"); D.avail[i] = v;
             el.parentNode.querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c === el));
