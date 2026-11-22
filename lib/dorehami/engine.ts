@@ -850,21 +850,12 @@ export function mount(root: HTMLElement, opts: DhOptions) {
 
     app.innerHTML = topbar() + `
       <div class="card">
-        <h1>✨ یک دورهمی بساز یا با کد وارد شو</h1>
-        <p class="muted" style="margin-bottom:10px">ایونت یا قراری که دوست داری را تعریف کن تا بقیه بگویند کِی و کجا می‌توانند، یا با کد وارد دورهمی شو:</p>
+        <h1>✨ یک دورهمی بساز یا پیدا کن</h1>
+        <p class="muted" style="margin-bottom:12px">ایونت یا قراری که دوست داری را بساز، یا قرارهای دوستان را پیدا کن و ملحق شو:</p>
 
-        <div class="seg">
-          <button type="button" id="mode_create_tab" class="on">✨ یک دورهمی بساز</button>
-          <button type="button" id="mode_join_tab">🔑 ورود با کد دورهمی</button>
-        </div>
-
-        <div id="join_pane" style="display:none;background:#f8f6ff;border:1.5px solid #e1daf7;border-radius:16px;padding:14px;margin-bottom:10px">
-          <label class="f" style="margin-top:0">🔑 کد یا لینک دورهمی را وارد کن:</label>
-          <div class="row" style="gap:8px;margin-top:6px">
-            <input type="text" id="join_code_inp" class="code-inp" placeholder="مثلاً: 096be90f6c" style="flex:1">
-            <button type="button" class="btn" id="join_code_go">ورود به دورهمی ←</button>
-          </div>
-          <p class="tiny" style="margin-top:6px">با زدن کد، مستقیم وارد صفحهٔ همان دورهمی می‌شوی تا ساعت‌ها و محدودهٔ مکانت را بگویی.</p>
+        <div class="seg" style="margin-bottom:14px">
+          <button type="button" id="mode_create_tab" class="on">✨ ساخت ایونت</button>
+          <button type="button" id="mode_find_tab">🔍 پیدا کردن ایونت ${mine.length ? `<span style="opacity:0.75;font-size:12px">(${fa(mine.length)})</span>` : ""}</button>
         </div>
 
         <div id="create_pane">
@@ -915,71 +906,101 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             <button class="btn line sm" id="c_go">📅 با روز و ساعت مشخص</button>
           </div>
         </div>
-      </div>
 
-      ${mine.length ? `
-        <div class="card">
-          <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:4px">
-            <h2 style="margin:0">🌿 ایونت‌ها و قرارهای دوستان</h2>
-            <span class="tiny">می‌توانی وارد شوی و زمان و مکانت را بفرستی</span>
+        <div id="find_pane" style="display:none">
+          <div style="background:#f8f6ff;border:1.5px solid #e1daf7;border-radius:14px;padding:12px 14px;margin-bottom:14px">
+            <label class="f" style="margin-top:0">🔑 ورود مستقیم با کد یا لینک دورهمی:</label>
+            <div class="row" style="gap:8px;margin-top:6px">
+              <input type="text" id="join_code_inp" class="code-inp" placeholder="کد یا لینک دورهمی مثلاً: 096be90f6c" style="flex:1">
+              <button type="button" class="btn" id="join_code_go">ورود ←</button>
+            </div>
+            <p class="tiny" style="margin-top:6px;margin-bottom:0">کد یا لینکی که از دوستت گرفتی را وارد کن تا ساعت‌ها و شهرهایت را بفرستی.</p>
           </div>
-          <p class="muted tiny" style="margin-top:2px;margin-bottom:8px">روی هر ایونت بزن تا ساعت‌های آزاد و شهرهایت را بفرستی؛ سیستم بهترین زمان و شهر مشترک را پیدا می‌کند:</p>
-          <div class="chips" id="meetups_filter_bar" style="gap:5px;margin:6px 0 10px">
-            <span class="chip sm on" data-mfilter="all">همه (${fa(mine.length)})</span>
-            <span class="chip sm" data-mfilter="cafe">☕ کافه و غذا</span>
-            <span class="chip sm" data-mfilter="sport">🏃‍♀️ ورزش و دویدن</span>
-            <span class="chip sm" data-mfilter="game">🎲 بازی و مافیا</span>
-            <span class="chip sm" data-mfilter="walk">🌳 پیاده‌روی و پارک</span>
-          </div>
-          <div id="meetups_list_container">
-            ${mine.map(m => {
-              const org = m.organizer_name ? `برگزارکننده: ${m.organizer_name}` : "دورهمی گروهی";
-              const cnt = m.count != null ? `${fa(m.count)} نفر اعلام آمادگی کرده‌اند` : "مشاهده و ثبت ترجیحات";
-              const icon = detectActivityIcon(m.title);
-              const isPair = detectTargetType(m.title, m.note) === "pair";
-              let cat = "other";
-              if (["☕","🍽️"].includes(icon)) cat = "cafe";
-              else if (["🏃‍♀️","🏸","🚴"].includes(icon)) cat = "sport";
-              else if (["🎲"].includes(icon)) cat = "game";
-              else if (["🌳","🧺"].includes(icon)) cat = "walk";
-              return `
-              <a class="meetup-item" data-mcat="${cat}" href="/d/${esc(m.code)}${m.admin && m.admin !== "account"?`?admin=${esc(m.admin)}`:""}">
-                <div style="display:flex;align-items:center;gap:12px">
-                  <div class="av-sm" style="background:${colorOf(m.organizer_name||'د')};width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px;flex:none">${icon}</div>
-                  <div>
-                    <div class="row" style="gap:6px;margin-bottom:3px;flex-wrap:wrap;align-items:center">
-                      <b style="font-size:15.5px">${esc(m.title || (m.organizer_name ? "دورهمی " + m.organizer_name : "قرار دورهمی"))}</b>
-                      <code class="tiny" style="background:#eeeaf8;padding:1px 6px;border-radius:6px;color:var(--p)">#${esc(m.code)}</code>
-                      <span class="pill sm" style="background:${isPair?"#fff0f6":"#f0f5ff"};color:${isPair?"#d63384":"#0d6efd"}">${isPair ? "👯‍♀️ همراه دونفره" : "👥 گروهی"}</span>
+
+          <div>
+            <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:4px">
+              <h2 style="margin:0;font-size:16px">🌿 ایونت‌ها و قرارهای دوستان</h2>
+              <span class="tiny">${fa(mine.length)} قرار فعال</span>
+            </div>
+            <p class="muted tiny" style="margin-top:2px;margin-bottom:8px">روی هر ایونت بزن تا ساعت‌های آزاد و شهرهایت را بفرستی؛ سیستم بهترین زمان و شهر مشترک را پیدا می‌کند:</p>
+
+            ${mine.length ? `
+              <div class="chips" id="meetups_filter_bar" style="gap:5px;margin:6px 0 10px">
+                <span class="chip sm on" data-mfilter="all">همه (${fa(mine.length)})</span>
+                <span class="chip sm" data-mfilter="cafe">☕ کافه و غذا</span>
+                <span class="chip sm" data-mfilter="sport">🏃‍♀️ ورزش و دویدن</span>
+                <span class="chip sm" data-mfilter="game">🎲 بازی و مافیا</span>
+                <span class="chip sm" data-mfilter="walk">🌳 پیاده‌روی و پارک</span>
+              </div>
+              <div id="meetups_list_container">
+                ${mine.map(m => {
+                  const org = m.organizer_name ? `برگزارکننده: ${m.organizer_name}` : "دورهمی گروهی";
+                  const cnt = m.count != null ? `${fa(m.count)} نفر اعلام آمادگی کرده‌اند` : "مشاهده و ثبت ترجیحات";
+                  const icon = detectActivityIcon(m.title);
+                  const isPair = detectTargetType(m.title, m.note) === "pair";
+                  let cat = "other";
+                  if (["☕","🍽️"].includes(icon)) cat = "cafe";
+                  else if (["🏃‍♀️","🏸","🚴"].includes(icon)) cat = "sport";
+                  else if (["🎲"].includes(icon)) cat = "game";
+                  else if (["🌳","🧺"].includes(icon)) cat = "walk";
+                  return `
+                  <a class="meetup-item" data-mcat="${cat}" href="/d/${esc(m.code)}${m.admin && m.admin !== "account"?`?admin=${esc(m.admin)}`:""}">
+                    <div style="display:flex;align-items:center;gap:12px">
+                      <div class="av-sm" style="background:${colorOf(m.organizer_name||'د')};width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px;flex:none">${icon}</div>
+                      <div>
+                        <div class="row" style="gap:6px;margin-bottom:3px;flex-wrap:wrap;align-items:center">
+                          <b style="font-size:15px">${esc(m.title || (m.organizer_name ? "دورهمی " + m.organizer_name : "قرار دورهمی"))}</b>
+                          <code class="tiny" style="background:#eeeaf8;padding:1px 6px;border-radius:6px;color:var(--p)">#${esc(m.code)}</code>
+                          <span class="pill sm" style="background:${isPair?"#fff0f6":"#f0f5ff"};color:${isPair?"#d63384":"#0d6efd"}">${isPair ? "👯‍♀️ همراه دونفره" : "👥 گروهی"}</span>
+                        </div>
+                        <div class="tiny">👤 برگزارکننده: <b>${esc(m.organizer_name || "دوستان")}</b> · 👥 ${cnt}</div>
+                      </div>
                     </div>
-                    <div class="tiny">👤 برگزارکننده: <b>${esc(m.organizer_name || "دوستان")}</b> · 👥 ${cnt}</div>
-                  </div>
-                </div>
-                <div class="row" style="gap:4px">
-                  ${m.final?'<span class="pill g">قطعی</span>':""}
-                  ${m.admin?'<span class="pill">مدیریت ⚙️</span>':'<span class="pill" style="font-weight:700">منم می‌تونم بیام 🙋‍♀️</span>'}
-                </div>
-              </a>`;
-            }).join("")}
+                    <div class="row" style="gap:4px">
+                      ${m.final?'<span class="pill g">قطعی</span>':""}
+                      ${m.admin?'<span class="pill">مدیریت ⚙️</span>':'<span class="pill" style="font-weight:700">منم می‌تونم بیام 🙋‍♀️</span>'}
+                    </div>
+                  </a>`;
+                }).join("")}
+              </div>
+            ` : `
+              <div style="text-align:center;padding:20px;background:#f9f9fc;border-radius:12px;color:var(--muted)">
+                <div style="font-size:24px;margin-bottom:4px">🌿</div>
+                <p class="tiny" style="margin:0">هنوز ایونتی ثبت نشده است. اولین قرار را در تب «ساخت ایونت» بساز!</p>
+              </div>
+            `}
           </div>
-        </div>` : ""}
+        </div>
+      </div>
     `;
     bindLoginLinks();
     if ($("#open_my_prof_btn")) $("#open_my_prof_btn").onclick = () => openProfileModal();
     if (sharedProf) openProfileModal(sharedProf);
 
     const tabCreate = $("#mode_create_tab");
-    const tabJoin = $("#mode_join_tab");
-    if (tabCreate && tabJoin) {
-      tabCreate.onclick = () => {
-        tabCreate.classList.add("on"); tabJoin.classList.remove("on");
-        $("#join_pane").style.display = "none";
-      };
-      tabJoin.onclick = () => {
-        tabJoin.classList.add("on"); tabCreate.classList.remove("on");
-        $("#join_pane").style.display = "block";
+    const tabFind = $("#mode_find_tab") || $("#mode_join_tab");
+    function switchHomeTab(toFind: boolean) {
+      if (toFind) {
+        tabFind?.classList.add("on");
+        tabCreate?.classList.remove("on");
+        if ($("#create_pane")) $("#create_pane").style.display = "none";
+        if ($("#find_pane")) $("#find_pane").style.display = "block";
+      } else {
+        tabCreate?.classList.add("on");
+        tabFind?.classList.remove("on");
+        if ($("#create_pane")) $("#create_pane").style.display = "block";
+        if ($("#find_pane")) $("#find_pane").style.display = "none";
+      }
+    }
+    if (tabCreate && tabFind) {
+      tabCreate.onclick = () => switchHomeTab(false);
+      tabFind.onclick = () => {
+        switchHomeTab(true);
         $("#join_code_inp")?.focus();
       };
+    }
+    if (location.hash === "#find" || location.hash === "#join" || q.get("tab") === "find" || q.get("tab") === "join") {
+      switchHomeTab(true);
     }
     const goJoinCode = () => {
       let raw = ($("#join_code_inp")?.value || "").trim();
