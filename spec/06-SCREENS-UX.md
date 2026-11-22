@@ -23,6 +23,7 @@ Tone: informal Persian ("تو"), short, encouraging. Never shame missed sessions
 
 ## Visual designs (Nov 2026)
 Mockups for the screens that are not built yet live on one design canvas: https://claude.ai/artifact/BySbBKsKtPxbcyF3czEths
+A copy is in the repo: `design/2026-11-screens/` (open `index.html`; PNGs in `png/` for agents that read images).
 - Row 1, M1–M2: Sessions (upcoming + streak), schedule form, shared room, wrap-up sheet.
 - Row 2, M4–M5: Together hub (events/rooms), event detail with safety card, create room/event, safety & rules (+ trusted contacts).
 - Row 3, MO-2: reminder + "همه‌چیز خوبه؟" safety check-in, post-outing feedback, monthly recurring plan.

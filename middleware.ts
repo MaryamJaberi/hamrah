@@ -2,6 +2,10 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 const PUBLIC = ['/login', '/auth'];
+// «دورهمی» links are opened by guests from a group chat: no account needed. ('/d' exactly, not '/discover')
+const isDorehami = (p: string) => p === '/d' || p.startsWith('/d/');
+// pages we may send someone back to after login/onboarding
+const isReturnable = (p?: string) => !!p && (p.startsWith('/out/join/') || isDorehami(p));
 
 export async function middleware(req: NextRequest) {
   let res = NextResponse.next({ request: req });
@@ -25,19 +29,19 @@ export async function middleware(req: NextRequest) {
   };
 
   if (!user) {
-    if (PUBLIC.some((p) => path.startsWith(p))) return res;
+    if (PUBLIC.some((p) => path.startsWith(p)) || isDorehami(path)) return res;
     const r = redirect('/login');
     // remember an invite link so the user lands on it after login/onboarding
-    if (path.startsWith('/out/join/')) r.cookies.set('hamrah_next', path, { maxAge: 3600, path: '/', sameSite: 'lax' });
+    if (path.startsWith('/out/join/') || isDorehami(path)) r.cookies.set('hamrah_next', path, { maxAge: 3600, path: '/', sameSite: 'lax' });
     return r;
   }
 
   const { data: profile } = await supabase.from('profiles').select('is_banned').eq('id', user.id).maybeSingle();
-  if (!profile && path !== '/onboarding') return redirect('/onboarding');
+  if (!profile && path !== '/onboarding' && !isDorehami(path)) return redirect('/onboarding');
   if (profile?.is_banned && path !== '/banned') return redirect('/banned');
   const next = req.cookies.get('hamrah_next')?.value;
-  if (profile && next?.startsWith('/out/join/') && path !== next) {
-    const r = redirect(next);
+  if (profile && isReturnable(next) && path !== next) {
+    const r = redirect(next!);
     r.cookies.delete('hamrah_next');
     return r;
   }

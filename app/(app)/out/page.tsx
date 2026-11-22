@@ -7,14 +7,16 @@ export const dynamic = 'force-dynamic';
 
 export default async function OutHub() {
   const { supabase, user } = await getSession();
-  const [{ data: op }, { data: mems }, { data: myIntents }, { data: nearby }] = await Promise.all([
+  const [{ data: op }, { data: mems }, { data: myIntents }, { data: nearby }, { data: dhMine }] = await Promise.all([
     supabase.from('outing_profiles').select('builder_step,activities').eq('user_id', user!.id).maybeSingle(),
     supabase.from('outing_plan_members').select('status, role, outing_plans(id,title,status,invite_code,activity_options,chosen_slot,created_at)')
       .eq('user_id', user!.id).in('status', ['joined', 'invited']),
     supabase.from('outing_intents').select('id,title,activity,status,starts_after,starts_before').eq('user_id', user!.id)
       .neq('status', 'closed').gt('starts_before', new Date().toISOString()).order('starts_after'),
     supabase.rpc('nearby_outing_intents'),
+    supabase.rpc('dh_my_meetups'),
   ]);
+  const meetups = ((dhMine as any[] | null) ?? []).slice(0, 8);
   const plans = (mems ?? []).map((m: any) => ({ ...m.outing_plans, my_status: m.status, my_role: m.role }))
     .filter((p: any) => p.id && p.status !== 'cancelled' && p.status !== 'done');
   const invited = plans.filter((p: any) => p.my_status === 'invited');
@@ -36,6 +38,15 @@ export default async function OutHub() {
           <span aria-hidden>←</span>
         </Link>
       )}
+
+      <Link href="/d" className="card mb-3 flex items-center gap-3 border-2 border-accent-soft">
+        <span className="text-3xl" aria-hidden>🔗</span>
+        <span className="flex-1">
+          <b className="block text-sm">دورهمی با یک لینک</b>
+          <span className="text-xs text-muted">لینک را در گروه واتس‌اپ بفرست؛ بقیه بدون ثبت‌نام فرم پر می‌کنند و منصفانه‌ترین شهر، روز و جا پیدا می‌شود</span>
+        </span>
+        <span aria-hidden>←</span>
+      </Link>
 
       <div className="grid grid-cols-2 gap-3">
         <Link href="/out/new" className="card text-center py-5">
@@ -65,6 +76,20 @@ export default async function OutHub() {
             <span className="flex-1 text-sm font-bold">{p.title}</span>
             <Link className="btn btn-sm" href={`/out/join/${p.invite_code}`}>ببین و بپیوند</Link>
           </div>
+        ))}
+      </>}
+
+      {meetups.length > 0 && <>
+        <h2 className="section">دورهمی‌های من 🔗</h2>
+        {meetups.map((m: any) => (
+          <Link key={m.code} href={`/d/${m.code}?tab=result`} className="card mb-2 flex items-center gap-3">
+            <span className="text-2xl" aria-hidden>{m.final ? '✅' : '🗳️'}</span>
+            <span className="flex-1">
+              <b className="text-sm block">{m.title}</b>
+              <span className="text-xs text-muted">{faNum(m.count)} جواب{m.is_admin ? ' · برگزارکننده' : ''}{m.final ? ' · قطعی شده' : ''}</span>
+            </span>
+            <span aria-hidden>←</span>
+          </Link>
         ))}
       </>}
 
