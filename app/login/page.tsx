@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -79,6 +80,10 @@ export default function Login() {
         </>
       )}
       {err && <p role="alert" className="text-warn text-sm mt-3">{err}</p>}
+      <Link href="/d" className="card mt-8 flex items-center justify-between text-sm border-2 border-primary-soft">
+        <span>🌿 <b>دورهمی و «بریم بیرون؟»</b> (بدون نیاز به ثبت‌نام)</span>
+        <span className="text-primary font-bold">ورود ←</span>
+      </Link>
     </main>
   );
 }

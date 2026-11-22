@@ -124,8 +124,33 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   const ACTIVITIES = [["cafe","☕ کافه و گپ"],["persian","🍢 رستوران ایرانی"],["food","🍽️ رستوران (هر نوع)"],["walk","🌳 پیاده‌روی / طبیعت"],["beach","🏖️ ساحل"],["museum","🖼️ موزه / گالری"],["boardgame","🎲 بازی (بردگیم، مافیا)"],["picnic","🧺 پیک‌نیک"],["karaoke","🎤 کارائوکه / آواز"],["dance","💃 رقص / مهمانی"],["cinema","🎬 سینما"],["market","🛍️ بازار / خرید"],["sport","🏸 ورزش با هم"],["workshop","🎨 کارگاه هنری"]];
   const DIET = [["halal","گوشت حلال"],["no_pork","فقط بدون گوشت خوک"],["vegetarian","گیاه‌خوار"],["vegan","وگان"],["gluten","بدون گلوتن"],["lactose","بدون لاکتوز"],["none","محدودیتی ندارم"]];
   const HOBBIES = ["کتاب","موسیقی","سفر","طبیعت","ورزش","یوگا","آشپزی","عکاسی","نقاشی","فیلم و سریال","بازی","رقص","زبان یاد گرفتن","روانشناسی","تکنولوژی","مد و لباس","گیاه و باغبانی","حیوانات","شعر","تئاتر"];
+  const WEEK_DAYS = [["sat","شنبه"],["sun","یکشنبه"],["mon","دوشنبه"],["tue","سه‌شنبه"],["wed","چهارشنبه"],["thu","پنجشنبه"],["fri","جمعه"]];
+  const DAY_PARTS = [["morning","صبح (۹–۱۲)"],["afternoon","ظهر (۱۲–۱۶)"],["evening","عصر (۱۶–۲۰)"],["night","شب (۲۰–۲۳)"]];
+  const fmtWin = w => {
+    const [d,p] = String(w||"").split(":");
+    const dl = (WEEK_DAYS.find(x=>x[0]===d)||[,d])[1];
+    const pl = (DAY_PARTS.find(x=>x[0]===p)||[,p])[1];
+    return `${dl} ${pl}`;
+  };
+  let KNOWN_PROFILES = [];
+  let RECENT_MEETUPS = [];
+  let profilesLoaded = false;
+  async function loadKnownProfiles(){
+    if (profilesLoaded) return KNOWN_PROFILES;
+    try {
+      const r = await fetch("/api/d/profiles");
+      if (r.ok) {
+        const j = await r.json();
+        KNOWN_PROFILES = j.profiles || [];
+        RECENT_MEETUPS = j.recentMeetups || [];
+        profilesLoaded = true;
+      }
+    } catch(e){}
+    return KNOWN_PROFILES;
+  }
   const LABEL = {
-    origin:"از کجا میاد", modes:"وسیله", seats:"جای خالی در ماشین", max_min:"حداکثر زمان راه", avail:"وقت‌ها", until:"تا کی می‌ماند",
+    origin:"از کجا میاد", can_cities:"لوکیشن‌هایی که می‌تونه بیاد", modes:"وسیله", seats:"جای خالی در ماشین", max_min:"حداکثر زمان راه",
+    avail:"وقت‌ها", free_windows:"ساعت‌ها و روزهای آزاد", free_note:"ساعت پیشنهادی", until:"تا کی می‌ماند",
     night_alone:"برگشت شب", activities:"دوست دارد", budget:"بودجه", diet:"غذا", allergy:"آلرژی", dislikes:"غذایی که دوست ندارد",
     alcohol:"الکل", smoke:"سیگار", weed:"ماری‌جوانا", langs:"زبان", bring:"با کی میاد", photo:"عکس و استوری", quiet:"جای آرام",
     access:"دسترسی", age:"سن", job:"کار / درس", hobbies:"علاقه‌ها", about:"درباره‌اش", question:"سؤالش از جمع", contact:"راه ارتباط"
@@ -145,6 +170,9 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const map = (arr, L) => arr.map(x => L[x] || x).join("، ");
     switch(k){
       case "origin": return v.fa || v.label || "";
+      case "can_cities": return (Array.isArray(v) ? v : []).map(k => (cityByKey(k)||{}).fa || k).join("، ");
+      case "free_windows": return (Array.isArray(v) ? v : []).map(fmtWin).join(" · ");
+      case "free_note": return String(v);
       case "modes": return map(v, MODE_L);
       case "max_min": return fa(v) + " دقیقه";
       case "activities": return map(v, Object.fromEntries(ACTIVITIES));
@@ -225,7 +253,10 @@ export function mount(root: HTMLElement, opts: DhOptions) {
 
   /* ============ home / create ============ */
   async function homePage(){
+    const q = new URLSearchParams(location.search);
+    const sharedUser = q.get("u");
     let mine = localItems();
+    await loadKnownProfiles();
     if (USER) {
       try {
         const server = await rpc("dh_my_meetups", {}) || [];
@@ -234,37 +265,175 @@ export function mount(root: HTMLElement, opts: DhOptions) {
                 ...mine.filter(x => !seen.has(x.code))];
       } catch(e){}
     }
+    for (const rm of RECENT_MEETUPS) {
+      if (!mine.some(x => x.code === rm.code)) mine.push({code: rm.code, title: rm.title, final: rm.final});
+    }
     if (dead) return;
+
+    const sharedProf = sharedUser ? KNOWN_PROFILES.find(p => p.name.toLowerCase() === sharedUser.trim().toLowerCase()) : null;
+    const renderProfileSummary = (p) => {
+      const d = p.data || {};
+      const ORDER = ["origin","can_cities","free_windows","free_note","modes","max_min","activities","budget","diet","hobbies","age","job","about","question"];
+      const rows = ORDER.map(k => { const v = showVal(k, d[k]); return v ? `<div class="kv"><b>${LABEL[k]}:</b> ${esc(v)}</div>` : ""; }).join("");
+      const shareUrl = `${location.origin}/d?u=${encodeURIComponent(p.name)}`;
+      const shareTxt = `پروفایل و ساعت‌های آزاد ${p.name} در دورهمی همراه 🌿:\n${shareUrl}`;
+      return `
+        <div style="background:#f8f5ff;border:1.5px solid #e0d4f7;border-radius:14px;padding:12px;margin-top:10px">
+          <div class="row" style="justify-content:space-between;margin-bottom:6px">
+            <b style="font-size:16px">🪪 پروفایل ${esc(p.name)}</b>
+            <span class="pill g">اطلاعات ذخیره‌شده ✓</span>
+          </div>
+          ${rows || '<p class="tiny">هنوز جزئیاتی ثبت نشده.</p>'}
+          ${(p.meetups && p.meetups.length) ? `<div style="margin-top:8px"><b class="tiny">دورهمی‌های ${esc(p.name)}:</b> <div class="chips" style="margin-top:4px">${p.meetups.map(m => `<a class="chip on" href="/d/${esc(m.code)}">🌿 ${esc(m.title)}</a>`).join("")}</div></div>` : ""}
+          <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #d8caec">
+            <b style="font-size:13px">🗓️ ویرایش ساعت‌ها و روزهای آزاد هفتگی ${esc(p.name)}:</b>
+            <div class="chips" style="margin-top:6px" id="hp_wins">
+              ${WEEK_DAYS.map(([dk,dl]) => DAY_PARTS.map(([pk,pl]) => {
+                const k = `${dk}:${pk}`;
+                const on = (d.free_windows||[]).includes(k);
+                return `<span class="chip ${on?"on":""}" data-hpwin="${k}">${dl} ${pl.split(" ")[0]}</span>`;
+              }).join("")).join("")}
+            </div>
+            <label class="f" style="margin-top:8px">📍 شهرها و لوکیشن‌هایی که می‌توانم بیایم:</label>
+            <div class="chips" id="hp_cities">
+              ${CITIES.filter(c=>c.meet).map(c => {
+                const on = (d.can_cities||[]).includes(c.key) || (d.origin && d.origin.key === c.key);
+                return `<span class="chip ${on?"on":""}" data-hpcity="${c.key}">${esc(c.fa)}</span>`;
+              }).join("")}
+            </div>
+            <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:6px">
+              <button class="btn sm" id="hp_save">💾 ذخیرهٔ ساعت‌ها و لوکیشن‌هایم</button>
+              <button class="btn ghost sm" id="hp_share">📤 اشتراک‌گذاری پروفایلم با دوستان</button>
+              <a class="btn line sm" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(shareTxt)}">واتس‌اپ</a>
+              <a class="btn line sm" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTxt.split("\n")[0])}">تلگرام</a>
+            </div>
+          </div>
+        </div>`;
+    };
+
     app.innerHTML = topbar() + `
       <header class="top"><span class="logo">🌿</span><div><b>دورهمی</b><small>از خانوادهٔ «همراه»</small></div></header>
+      ${sharedProf ? `<div class="card"><h2>👯‍♀️ پروفایل و ساعت‌های آزادِ ${esc(sharedProf.name)}</h2>${renderProfileSummary(sharedProf)}</div>` : ""}
       <div class="card">
         <div class="hero-e">👯‍♀️🗺️</div>
         <h1>یک دورهمی بساز، لینکش را در گروه بفرست</h1>
-        <p class="muted">هر کس حدود ۳ دقیقه فرم پر می‌کند: از کجا میاد، با چه وسیله‌ای، کی وقت دارد، چی می‌خورد و با چی راحت است. «همراه» شهری را پیدا می‌کند که راهش برای همه منصفانه باشد، بهترین روز را نشان می‌دهد و جای مناسب پیشنهاد می‌کند. هیچ‌کس لازم نیست ثبت‌نام کند.</p>
+        <p class="muted">لازم نیست از اول روز و ساعت تعیین کنی! کافی است بگویی <b>«بریم بیرون؟»</b> تا هر کس بگوید چه روزها، چه ساعت‌هایی و کدام لوکیشن‌ها می‌تواند بیاید، و اپ بهترین زمان و شهر مشترک را به همه پیشنهاد بدهد.</p>
+      </div>
+      <div class="card" id="prof_card">
+        <h2>🪪 پروفایل و ساعت‌های آزاد من (و بچه‌های قبلی)</h2>
+        <p class="muted">روی اسمت بزن تا اطلاعات قبلی‌ات (مثل دیدار نخست) بیاید، ساعت‌های آزادت را تنظیم کنی و اگر خواستی با دوستت به اشتراک بگذاری:</p>
+        <div class="chips" id="known_chips" style="margin-top:6px">
+          ${KNOWN_PROFILES.map(p => `<span class="chip ${(sharedProf && sharedProf.name===p.name)?"on":""}" data-kprof="${esc(p.name)}">👤 ${esc(p.name)}</span>`).join("")}
+          <span class="chip" id="new_prof_btn">+ ساخت پروفایل جدید</span>
+        </div>
+        <div id="prof_new_box" style="display:none;margin-top:8px">
+          <div class="row"><input type="text" id="np_name" maxlength="40" placeholder="اسمت را بنویس (مثلاً سارا)"><button class="btn sm" id="np_go">ساخت</button></div>
+        </div>
+        <div id="prof_detail_box">${sharedProf ? "" : ""}</div>
       </div>
       <div class="card">
-        <h2>۱. اسم دورهمی</h2>
-        <input type="text" id="c_title" maxlength="80" placeholder="مثلاً: دورهمی دخترای جنوب هلند ✨">
+        <h2>۱. اسم دورهمی یا فراخوان «بریم بیرون؟»</h2>
+        <input type="text" id="c_title" maxlength="80" placeholder="مثلاً: بریم بیرون؟ ✨ یا دورهمی دخترای هلند">
         <label class="f">اسم تو (برگزارکننده)</label>
         <input type="text" id="c_org" maxlength="40" placeholder="مثلاً مریم">
         <label class="f">یک خط توضیح (اختیاری)</label>
-        <textarea id="c_note" maxlength="500" placeholder="مثلاً: بیایید قبل از کریسمس همدیگر را ببینیم 🎄"></textarea>
+        <textarea id="c_note" maxlength="500" placeholder="مثلاً: بیایید بگید چه روزها و ساعت‌هایی و کجاها می‌تونید بیاید 🌿"></textarea>
       </div>
       <div class="card">
-        <h2>۲. چند روز و ساعت پیشنهادی</h2>
-        <p class="muted">بچه‌ها برای هر کدام می‌گویند «می‌تونم»، «شاید» یا «نه».</p>
-        <div id="c_opts"></div>
-        <button class="btn ghost sm" id="c_add" style="margin-top:8px">+ یک روز دیگر</button>
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <h2 style="margin:0">۲. زمان دورهمی</h2>
+          <button type="button" class="btn ghost sm" id="c_open_toggle">🙋‍♀️ بدون تعیین وقت از اول (هر کس خودش بگوید کِی و کجا)</button>
+        </div>
+        <div id="c_open_note" class="okbox" style="display:none;margin-top:8px">
+          ✨ <b>حالت باز («بریم بیرون؟») فعال است:</b> از اول ساعت و روزی تعیین نمی‌شود؛ هر کسی که لینک را باز کند می‌گوید کدام روزها، چه ساعت‌هایی و کدام شهرها می‌تواند بیاید و اپ بهترین زمان و مکان مشترک را پیشنهاد می‌دهد.
+        </div>
+        <div id="c_fixed_box" style="margin-top:8px">
+          <p class="muted">یا چند روز پیشنهادی بگذار (بچه‌ها علاوه بر این‌ها می‌توانند ساعت‌ها و روزهای آزاد خودشان را هم بزنند):</p>
+          <div id="c_opts"></div>
+          <button class="btn ghost sm" id="c_add" style="margin-top:8px">+ یک روز دیگر</button>
+        </div>
       </div>
       <div class="card">
         <div class="opt" id="c_wo"><span class="e">👩</span><div><b>این دورهمی فقط برای خانم‌هاست</b><span>روی صفحهٔ دعوت نوشته می‌شود</span></div></div>
       </div>
       <div id="c_err"></div>
-      <button class="btn block" id="c_go">بساز و لینک بگیر ✨</button>
-      ${mine.length ? `<div class="card" style="margin-top:16px"><h2>دورهمی‌هایی که اینجا ساختی یا پر کردی</h2>${mine.map(m=>`<div class="row" style="padding:6px 0"><a class="grow" href="/d/${esc(m.code)}${m.admin && m.admin !== "account"?`?admin=${esc(m.admin)}`:""}">${esc(m.title)}</a>${m.final?'<span class="pill g">قطعی</span>':""}${m.admin?'<span class="pill">برگزارکننده</span>':""}</div>`).join("")}</div>` : ""}
+      <div class="row" style="flex-wrap:wrap;gap:8px">
+        <button class="btn grow" id="c_go">بساز و لینک بگیر ✨</button>
+        <button class="btn ghost grow" id="c_go_open">🙋‍♀️ بریم بیرون؟ (بدون تعیین وقت از اول)</button>
+      </div>
+      ${mine.length ? `<div class="card" style="margin-top:16px"><h2>دورهمی‌ها (مثل دیدار نخست)</h2>${mine.map(m=>`<div class="row" style="padding:6px 0"><a class="grow" href="/d/${esc(m.code)}${m.admin && m.admin !== "account"?`?admin=${esc(m.admin)}`:""}">${esc(m.title)}</a>${m.final?'<span class="pill g">قطعی</span>':""}${m.admin?'<span class="pill">برگزارکننده</span>':""}</div>`).join("")}</div>` : ""}
     `;
     bindLoginLinks();
     if (USER) $("#c_org").value = USER.name || "";
+
+    let activeProf = sharedProf || null;
+    function bindProfileDetail(p) {
+      activeProf = p;
+      const box = $("#prof_detail_box");
+      if (!box || !p) return;
+      box.innerHTML = renderProfileSummary(p);
+      // Save to localStorage so opening any meetup auto-prefills this person's data
+      store.set("dh_last", { name: p.name, data: p.data || {}, pub: p.public_fields || [], saved: true });
+      if (!$("#c_org").value) $("#c_org").value = p.name;
+
+      box.querySelectorAll("[data-hpwin]").forEach(el => el.onclick = () => {
+        const k = el.dataset.hpwin;
+        p.data = p.data || {};
+        const arr = p.data.free_windows || [];
+        p.data.free_windows = arr.includes(k) ? arr.filter(x => x !== k) : [...arr, k];
+        el.classList.toggle("on", p.data.free_windows.includes(k));
+      });
+      box.querySelectorAll("[data-hpcity]").forEach(el => el.onclick = () => {
+        const k = el.dataset.hpcity;
+        p.data = p.data || {};
+        const arr = p.data.can_cities || (p.data.origin?.key ? [p.data.origin.key] : []);
+        p.data.can_cities = arr.includes(k) ? arr.filter(x => x !== k) : [...arr, k];
+        el.classList.toggle("on", p.data.can_cities.includes(k));
+      });
+      const saveBtn = $("#hp_save");
+      if (saveBtn) saveBtn.onclick = async () => {
+        saveBtn.disabled = true;
+        try {
+          await fetch("/api/d/profiles", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: p.name, data: p.data, public_fields: p.public_fields || ["origin","can_cities","free_windows","activities","hobbies"] })
+          });
+          store.set("dh_last", { name: p.name, data: p.data || {}, pub: p.public_fields || [], saved: true });
+          toast("ساعت‌های آزاد و پروفایلت ذخیره شد ✓");
+        } catch(e) { toast("ذخیره نشد"); }
+        saveBtn.disabled = false;
+      };
+      const shareBtn = $("#hp_share");
+      if (shareBtn) shareBtn.onclick = async () => {
+        const url = `${location.origin}/d?u=${encodeURIComponent(p.name)}`;
+        const txt = `پروفایل و ساعت‌های آزاد ${p.name} برای بیرون رفتن 🌿:\n${url}`;
+        try { await navigator.clipboard.writeText(txt); toast("لینک پروفایل و ساعت‌های آزادت کپی شد ✓"); }
+        catch(e) { toast(url); }
+      };
+    }
+
+    root.querySelectorAll("[data-kprof]").forEach(el => el.onclick = () => {
+      const name = el.dataset.kprof;
+      const p = KNOWN_PROFILES.find(x => x.name === name);
+      root.querySelectorAll("[data-kprof]").forEach(c => c.classList.toggle("on", c === el));
+      if (p) bindProfileDetail(p);
+    });
+    const newBtn = $("#new_prof_btn");
+    if (newBtn) newBtn.onclick = () => {
+      $("#prof_new_box").style.display = "block";
+      $("#np_name")?.focus();
+    };
+    const npGo = $("#np_go");
+    if (npGo) npGo.onclick = () => {
+      const nm = $("#np_name").value.trim();
+      if (!nm) return;
+      let p = KNOWN_PROFILES.find(x => x.name.toLowerCase() === nm.toLowerCase());
+      if (!p) { p = { name: nm, data: { free_windows: [], can_cities: [] }, public_fields: ["origin","can_cities","free_windows","activities","hobbies"], meetups: [] }; KNOWN_PROFILES.push(p); }
+      $("#prof_new_box").style.display = "none";
+      bindProfileDetail(p);
+    };
+
     // remembered answers can be forgotten any time
     const hasLast = USER ? !!(PREFILL && PREFILL.saved) : !!store.get("dh_last");
     if (hasLast) {
@@ -281,6 +450,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         } catch(e){ toast(errMsg(e)); }
       };
     }
+    let openSchedule = false;
     const opts = [];
     const addOpt = (d="", t="15:00") => { opts.push({d,t}); drawOpts(); };
     function drawOpts(){
@@ -299,19 +469,28 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const sun = new Date(sat); sun.setDate(sat.getDate()+1);
     addOpt(iso(sat), "15:00"); addOpt(iso(sun), "14:00");
     $("#c_add").onclick = () => addOpt("", "15:00");
+    $("#c_open_toggle").onclick = () => {
+      openSchedule = !openSchedule;
+      $("#c_open_note").style.display = openSchedule ? "block" : "none";
+      $("#c_fixed_box").style.display = openSchedule ? "none" : "block";
+      $("#c_open_toggle").textContent = openSchedule ? "📅 می‌خواهم خودم تاریخ بگذارم" : "🙋‍♀️ بدون تعیین وقت از اول (هر کس خودش بگوید کِی و کجا)";
+    };
     let wo = false;
     $("#c_wo").onclick = e => { wo = !wo; e.currentTarget.classList.toggle("on", wo); };
-    $("#c_go").onclick = async () => {
-      const title = $("#c_title").value.trim() || "دورهمی ✨";
-      const good = opts.filter(o => o.d).slice(0,10);
-      if (!good.length) { $("#c_err").innerHTML = `<div class="err">حداقل یک روز انتخاب کن.</div>`; return; }
-      const b = $("#c_go"); b.disabled = true; b.innerHTML = `<span class="spin"></span>`;
+    async function createMeetup(forceOpen = false) {
+      const isOpen = forceOpen || openSchedule;
+      const title = $("#c_title").value.trim() || (isOpen ? "بریم بیرون؟ ✨" : "دورهمی ✨");
+      const good = isOpen ? [] : opts.filter(o => o.d).slice(0,10);
+      if (!isOpen && !good.length) { $("#c_err").innerHTML = `<div class="err">حداقل یک روز انتخاب کن (یا دکمهٔ «بریم بیرون؟ بدون تعیین وقت» را بزن).</div>`; return; }
+      const b = forceOpen ? $("#c_go_open") : $("#c_go"); b.disabled = true; b.innerHTML = `<span class="spin"></span>`;
       try {
         const r = await rpc("dh_create", {p_title:title, p_note:$("#c_note").value, p_organizer:$("#c_org").value, p_options:good, p_women_only:wo});
         store.set("dh_"+r.code, {title, admin:r.admin_token});
         go(`/d/${r.code}?admin=${r.admin_token}&new=1`);
-      } catch(e){ $("#c_err").innerHTML = `<div class="err">${esc(errMsg(e))}</div>`; b.disabled=false; b.textContent="بساز و لینک بگیر ✨"; }
-    };
+      } catch(e){ $("#c_err").innerHTML = `<div class="err">${esc(errMsg(e))}</div>`; b.disabled=false; b.textContent = forceOpen ? "🙋‍♀️ بریم بیرون؟ (بدون تعیین وقت از اول)" : "بساز و لینک بگیر ✨"; }
+    }
+    $("#c_go").onclick = () => createMeetup(false);
+    $("#c_go_open").onclick = () => createMeetup(true);
   }
 
   /* ============ meetup page ============ */
@@ -366,7 +545,8 @@ export function mount(root: HTMLElement, opts: DhOptions) {
 
   /* ============ the form (wizard) ============ */
   async function formPage(edit){
-    let D = {}, PUB = new Set(["about","hobbies","activities","langs","question","origin","modes"]), NAME = "";
+    await loadKnownProfiles();
+    let D = {}, PUB = new Set(["about","hobbies","activities","langs","question","origin","modes","avail"]), NAME = "";
     if (edit){
       try { const mine = await rpc("dh_mine", {p_code:CODE, p_edit:edit}); if (mine){ D = mine.data||{}; PUB = new Set(mine.public_fields||[]); NAME = mine.name; } } catch(e){}
     }
@@ -384,13 +564,44 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       {k:"hi", t:"سلام 👋", draw: () => `
         <h1>${esc(M.title)}</h1>
         ${M.note?`<p>${esc(M.note)}</p>`:""}
-        <p class="muted">${M.organizer_name?esc(M.organizer_name)+" دعوتت کرده. ":""}چند سؤال کوتاه می‌پرسم تا جا و ساعتی پیدا کنیم که برای همه خوب باشد. ${M.women_only?"<b>این دورهمی فقط برای خانم‌هاست.</b>":""}</p>
-        <div class="okbox">🔒 زیر هر سؤال یک کلید هست: <b>«به بقیه نشان بده»</b>. اگر خاموش باشد، جوابت فقط به‌صورت بی‌نام در حساب‌ها می‌آید (مثلاً «۲ نفر گیاه‌خوارند») و اسمت کنارش نمی‌آید.</div>
-        ${quick?`<div class="okbox">✨ جواب‌های دفعهٔ قبلت را گذاشتم: مبدأ، وسیله، غذا، ترجیح‌ها و حریم خصوصی. فقط روزها را بزن؛ در صفحهٔ آخر هر بخش را خواستی با یک ضربه عوض کن.</div>`
+        <p class="muted">${M.organizer_name?esc(M.organizer_name)+" دعوتت کرده. ":""}بگو چه روزها، چه ساعت‌هایی و کدام لوکیشن‌ها می‌توانی بیایی تا بهترین زمان و مکان مشترک برای همه پیدا شود. ${M.women_only?"<b>این دورهمی فقط برای خانم‌هاست.</b>":""}</p>
+        ${KNOWN_PROFILES.length ? `
+          <div style="background:#f8f5ff;border:1.5px solid #e0d4f7;border-radius:12px;padding:10px;margin:10px 0">
+            <b style="font-size:13px">👤 قبلاً فرم پر کردی؟ روی اسمت بزن تا اطلاعاتت بیاید:</b>
+            <div class="chips" style="margin-top:6px">
+              ${KNOWN_PROFILES.map(p => `<span class="chip ${NAME===p.name?"on":""}" data-pickprof="${esc(p.name)}">👤 ${esc(p.name)}</span>`).join("")}
+            </div>
+          </div>` : ""}
+        <div class="okbox">🔒 زیر هر سؤال یک کلید هست: <b>«به بقیه نشان بده»</b>. اگر خاموش باشد، جوابت فقط به‌صورت بی‌نام در حساب‌ها می‌آید و اسمت کنارش نمی‌آید.</div>
+        ${quick?`<div class="okbox">✨ جواب‌های دفعهٔ قبلت را گذاشتم: مبدأ (${esc(D.origin?.fa || "ثبت‌شده")})، وسیله، غذا، ترجیح‌ها و حریم خصوصی. فقط ساعت‌ها و لوکیشن‌هایی که این بار می‌تونی رو بزن؛ در صفحهٔ آخر هر بخش را خواستی با یک ضربه عوض کن.</div>`
           : prefilled?`<div class="note">✨ چند جواب را از پروفایل «همراه»ت پر کردم. هر کدام را خواستی عوض کن.</div>`:""}
         <label class="f">اسمت (یا اسمی که بچه‌ها می‌شناسند)</label>
         <input type="text" id="f_name" maxlength="40" value="${esc(NAME)}" placeholder="مثلاً سارا">`,
-        read: () => { NAME = $("#f_name").value.trim(); if (!NAME) return "اسمت را بنویس 🙂"; }},
+        after: () => {
+          root.querySelectorAll("[data-pickprof]").forEach(el => el.onclick = () => {
+            const p = KNOWN_PROFILES.find(x => x.name === el.dataset.pickprof);
+            if (!p) return;
+            NAME = p.name;
+            D = {...JSON.parse(JSON.stringify(p.data || {})), avail: D.avail || {}};
+            if (p.public_fields && p.public_fields.length) PUB = new Set(p.public_fields.map(groupOf));
+            quick = true; prefilled = true;
+            store.set("dh_last", {name: NAME, data: p.data || {}, pub: p.public_fields || [], saved: true});
+            draw();
+            toast(`اطلاعات ${NAME} بارگذاری شد ✓`);
+          });
+        },
+        read: () => {
+          NAME = $("#f_name").value.trim();
+          if (!NAME) return "اسمت را بنویس 🙂";
+          if (!prefilled && !edit) {
+            const match = KNOWN_PROFILES.find(x => x.name.toLowerCase() === NAME.toLowerCase());
+            if (match && match.data) {
+              D = {...JSON.parse(JSON.stringify(match.data)), avail: D.avail || {}};
+              if (match.public_fields && match.public_fields.length) PUB = new Set(match.public_fields.map(groupOf));
+              quick = true; prefilled = true;
+            }
+          }
+        }},
       {k:"origin", t:"از کجا میای؟", draw: () => `
         <h2>📍 از کجا راه میفتی؟</h2>
         <p class="muted">نزدیک‌ترین شهر یا ایستگاه را انتخاب کن. آدرس دقیقت را نمی‌خواهیم.</p>
@@ -398,16 +609,25 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         <div class="list-sel" id="f_cl"></div>
         <button class="btn line sm" id="f_geo" style="margin-top:8px">📡 از موقعیت گوشی‌ام (تقریبی، حدود ۵ کیلومتر)</button>
         <div id="f_osel" style="margin-top:8px"></div>
-        ${visT("origin","شهرم را به بقیه نشان بده")}`,
+        <label class="f" style="margin-top:12px">📍 در کدام شهرها/لوکیشن‌ها راحتی که همدیگر را ببینیم؟ (هر چندتا که می‌تونی)</label>
+        <div class="chips" id="f_cancities">
+          ${CITIES.filter(c => c.meet).map(c => `<span class="chip ${(D.can_cities||[]).includes(c.key)?"on":""}" data-cancity="${c.key}">${esc(c.fa)}</span>`).join("")}
+        </div>
+        ${visT("origin","شهر و لوکیشن‌هایم را به بقیه نشان بده")}`,
         after: () => {
-          const draw = () => {
+          const drawCities = () => {
             const s = $("#f_cs").value.trim().toLowerCase();
             $("#f_cl").innerHTML = CITIES.filter(c => !s || c.fa.includes(s) || c.nl.toLowerCase().includes(s) || c.key.includes(s))
               .map(c => `<div data-k="${c.key}" class="${D.origin&&D.origin.key===c.key?"on":""}">${esc(c.fa)} <span class="tiny ltr">${esc(c.nl)}</span></div>`).join("") || `<div class="tiny">پیدا نشد؛ نزدیک‌ترین شهر را بزن یا از موقعیت گوشی استفاده کن.</div>`;
-            $("#f_cl").querySelectorAll("[data-k]").forEach(el => el.onclick = () => { const c = cityByKey(el.dataset.k); D.origin = {key:c.key, fa:c.fa, lat:c.lat, lng:c.lng}; showSel(); draw(); });
+            $("#f_cl").querySelectorAll("[data-k]").forEach(el => el.onclick = () => {
+              const c = cityByKey(el.dataset.k);
+              D.origin = {key:c.key, fa:c.fa, lat:c.lat, lng:c.lng};
+              showSel(); drawCities();
+            });
           };
           const showSel = () => $("#f_osel").innerHTML = D.origin ? `<span class="pill g">✓ ${esc(D.origin.fa)}</span>` : "";
-          $("#f_cs").oninput = draw; draw(); showSel();
+          $("#f_cs").oninput = drawCities; drawCities(); showSel();
+          multi("[data-cancity]", "can_cities");
           $("#f_geo").onclick = () => {
             if (!navigator.geolocation) return toast("گوشی موقعیت نمی‌دهد");
             $("#f_geo").innerHTML = `<span class="spin"></span>`;
@@ -444,27 +664,50 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           oneOf("[data-max]", v => D.max_min = +v);
         },
         read: () => { if (!(D.modes||[]).length) return "حداقل یک راه رسیدن انتخاب کن."; if (!D.max_min) D.max_min = 60; }},
-      {k:"avail", t:"کی می‌تونی؟", draw: () => `
-        <h2>📅 کدام روزها می‌تونی؟</h2>
-        ${M.options.map((o,i)=>`<div class="slot"><span class="lbl">${esc(fmtOpt(o))}</span>
-          <span class="vote3">
-            <span class="chip y ${D.avail[i]==="yes"?"on":""}" data-av="${i}:yes">می‌تونم</span>
-            <span class="chip m ${D.avail[i]==="maybe"?"on":""}" data-av="${i}:maybe">شاید</span>
-            <span class="chip n ${D.avail[i]==="no"?"on":""}" data-av="${i}:no">نه</span></span></div>`).join("")}
+      {k:"avail", t:"کی و کجا می‌تونی؟", draw: () => `
+        <h2>📅 چه روزها و چه ساعت‌هایی می‌تونی؟</h2>
+        ${M.options.length ? `
+          <p class="muted">اول به این تاریخ‌های پیشنهادی جواب بده:</p>
+          ${M.options.map((o,i)=>`<div class="slot"><span class="lbl">${esc(fmtOpt(o))}</span>
+            <span class="vote3">
+              <span class="chip y ${D.avail[i]==="yes"?"on":""}" data-av="${i}:yes">می‌تونم</span>
+              <span class="chip m ${D.avail[i]==="maybe"?"on":""}" data-av="${i}:maybe">شاید</span>
+              <span class="chip n ${D.avail[i]==="no"?"on":""}" data-av="${i}:no">نه</span></span></div>`).join("")}
+        ` : `<p class="muted">در این دورهمی وقت از قبل تعیین نشده! خودت بگو کدام روزها و چه ساعت‌هایی می‌توانی بیایی تا اپ بهترین زمان مشترک را پیدا کند:</p>`}
+        <label class="f" style="margin-top:10px">🗓️ کدام روزها و ساعت‌های هفته برایت خوب است؟ (در پروفایلت هم ذخیره می‌شود)</label>
+        <div class="chips" id="f_freewins">
+          ${WEEK_DAYS.map(([dk,dl]) => DAY_PARTS.map(([pk,pl]) => {
+            const k = `${dk}:${pk}`;
+            const on = (D.free_windows||[]).includes(k);
+            return `<span class="chip ${on?"on":""}" data-fwin="${k}">${dl} ${pl.split(" ")[0]}</span>`;
+          }).join("")).join("")}
+        </div>
+        <label class="f" style="margin-top:8px">⏰ توضیح ساعت دلخواه (اختیاری — مثلاً: شنبه ۱۴ تا ۱۹ یا جمعه بعد از کار)</label>
+        <input type="text" id="f_fnote" maxlength="100" value="${esc(D.free_note||"")}" placeholder="مثلاً: یکشنبه‌ها از ساعت ۱۵ به بعد">
+        <label class="f" style="margin-top:10px">📍 کدام شهرها / لوکیشن‌ها می‌توانی بیایی؟</label>
+        <div class="chips" id="f_avcities">
+          ${CITIES.filter(c=>c.meet).map(c => `<span class="chip ${(D.can_cities||[]).includes(c.key)||(D.origin&&D.origin.key===c.key)?"on":""}" data-avcity="${c.key}">${esc(c.fa)}</span>`).join("")}
+        </div>
         <label class="f">🕘 معمولاً تا چه ساعتی می‌تونی بمونی؟</label>
         <div class="chips">${Object.entries(UNTIL_L).map(([k,l])=>`<span class="chip ${D.until===k?"on":""}" data-until="${k}">${l}</span>`).join("")}</div>
         <label class="f">🌙 تنها برگشتن در تاریکی؟</label>
         <div class="opts">${Object.entries({ok:["😌","راحتم"],early:["🌇","ترجیح می‌دهم قبل از تاریکی برگردم"],ride:["🤝","اگر کسی هم‌مسیر باشد یا برساند راحت‌ترم"]}).map(([k,[e,l]])=>`<div class="opt ${D.night_alone===k?"on":""}" data-night="${k}"><span class="e">${e}</span><div><b>${l}</b></div></div>`).join("")}</div>
-        ${visT("avail","روزهایی که می‌تونم را با اسمم نشان بده")}`,
+        ${visT("avail","روزها و ساعت‌هایی که می‌تونم را با اسمم نشان بده")}`,
         after: () => {
           root.querySelectorAll("[data-av]").forEach(el => el.onclick = () => {
             const [i,v] = el.dataset.av.split(":"); D.avail[i] = v;
             el.parentNode.querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c === el));
           });
+          multi("[data-fwin]", "free_windows");
+          multi("[data-avcity]", "can_cities");
           oneOf("[data-until]", v => D.until = v);
           oneOf("[data-night]", v => D.night_alone = v, ".opt");
         },
-        read: () => { if (M.options.some((o,i)=>!D.avail[i])) return "برای همهٔ روزها یکی را بزن (اگر نمی‌دانی «شاید»)."; }},
+        read: () => {
+          if ($("#f_fnote")) D.free_note = $("#f_fnote").value.trim();
+          if (M.options.length && M.options.some((o,i)=>!D.avail[i])) return "برای همهٔ روزها یکی را بزن (اگر نمی‌دانی «شاید»).";
+          if (!M.options.length && !(D.free_windows||[]).length && !D.free_note) return "حداقل یک روز و ساعت که می‌توانی بیایی را انتخاب کن.";
+        }},
       {k:"activities", t:"چی کار کنیم؟", draw: () => `
         <h2>✨ دوست داری چی کار کنیم؟</h2>
         <p class="muted">هر چندتا که دوست داری.</p>
@@ -546,7 +789,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           <h3>🔒 خصوصی (فقط بی‌نام در حساب‌ها)</h3>${priv.join("") || '<p class="tiny">هیچ چیز</p>'}
           <p class="tiny" style="margin-top:10px">برای عوض کردن هر بخش، دکمه‌اش را بالا بزن. بعداً هم می‌توانی فرمت را ویرایش یا پاک کنی.${USER?" این جواب‌ها برای دورهمی بعدی‌ات هم یادم می‌ماند (به‌جز روزها).":""}</p>`; }},
     ];
-    const GROUPS = {origin:["origin"], modes:["modes","seats","max_min"], avail:["avail","until","night_alone"], activities:["activities","budget"],
+    const GROUPS = {origin:["origin","can_cities"], modes:["modes","seats","max_min"], avail:["avail","free_windows","free_note","until","night_alone"], activities:["activities","budget"],
       diet:["diet","allergy","dislikes"], life:["alcohol","smoke","weed"], more:["langs","bring","photo","quiet","access"],
       age:["age"], job:["job"], contact:["contact"]};
     function groupOf(k){ for (const [g,ks] of Object.entries(GROUPS)) if (ks.includes(k)) return g; return k; }
@@ -603,7 +846,10 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       try {
         const r = await rpc("dh_respond", {p_code:CODE, p_edit:edit||null, p_name:NAME, p_data:clean, p_public:pubFields});
         store.set("dh_"+CODE, {...(store.get("dh_"+CODE)||{}), title:M.title, edit:r.edit_token, name:NAME});
-        if (!USER) { const keep = {...clean}; delete keep.avail; store.set("dh_last", {name:NAME, data:keep, pub:pubFields, saved:true}); }
+        const keep = {...clean}; delete keep.avail;
+        if (!USER) { store.set("dh_last", {name:NAME, data:keep, pub:pubFields, saved:true}); }
+        fetch("/api/d/profiles", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({name:NAME, data:keep, public_fields:pubFields})}).catch(()=>{});
+        profilesLoaded = false;
         toast("ثبت شد ✓"); go(`/d/${CODE}?tab=result`);
       } catch(e){ $("#f_err").innerHTML = `<div class="err">${esc(errMsg(e))}</div>`; b.disabled=false; b.textContent="دوباره امتحان کن"; }
     }
@@ -613,12 +859,29 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   /* ============ analysis ============ */
   function analyse(){
     const rows = M.anon || [];
+    const people = M.people || [];
     const n = rows.length;
-    // time
+    // time (predetermined options)
     const slots = M.options.map((o,i) => {
       let y=0,m=0,no=0; rows.forEach(r => { const a = (r.avail||{})[i]; if (a==="yes") y++; else if (a==="maybe") m++; else if (a==="no") no++; });
       return {i, o, y, m, no, score: y + m*0.5};
     }).sort((a,b) => b.score - a.score || a.no - b.no);
+
+    // open time windows & preferred cities (from people + KNOWN_PROFILES fallback)
+    const winCounts = {};
+    const cityVotes = {};
+    const freeNotes = [];
+    people.forEach(p => {
+      const kp = KNOWN_PROFILES.find(x => x.name.toLowerCase() === (p.name||"").toLowerCase());
+      const fw = (p.free_windows && p.free_windows.length) ? p.free_windows : (kp?.data?.free_windows || []);
+      const cc = (p.can_cities && p.can_cities.length) ? p.can_cities : (kp?.data?.can_cities || (p.origin?.key ? [p.origin.key] : []));
+      const fn = p.free_note || kp?.data?.free_note;
+      fw.forEach(w => { winCounts[w] = winCounts[w] || {w, count:0, names:[]}; winCounts[w].count++; winCounts[w].names.push(p.name); });
+      cc.forEach(c => { cityVotes[c] = (cityVotes[c] || 0) + 1; });
+      if (fn) freeNotes.push({name: p.name, note: fn});
+    });
+    const winSorted = Object.values(winCounts).sort((a,b) => b.count - a.count);
+
     // place
     const withO = rows.filter(r => r.origin && r.origin.lat);
     const hubs = CITIES.filter(c => c.meet).map(h => {
@@ -632,8 +895,9 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       const maxT = per.length ? Math.max(...per.map(p=>p.t)) : 0;
       const avg = per.length ? per.reduce((a,p)=>a+p.t,0)/per.length : 0;
       const over = per.filter(p=>p.over).length;
-      const score = (per.length ? Math.max(...per.map(p=>p.w)) : 0) + 0.35*avg + 30*over;
-      return {h, per, maxT, avg, over, score};
+      const votes = cityVotes[h.key] || 0;
+      const score = (per.length ? Math.max(...per.map(p=>p.w)) : 0) + 0.35*avg + 30*over - votes*6;
+      return {h, per, maxT, avg, over, votes, score};
     }).sort((a,b) => a.score - b.score);
     // needs
     const cnt = f => rows.filter(f).length;
@@ -645,7 +909,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const untils = rows.map(r => r.until).filter(Boolean);
     const hob = {}; rows.forEach(r => (r.hobbies||[]).forEach(h => hob[h] = (hob[h]||0)+1));
     return {
-      n, slots, hubs, withO: withO.length,
+      n, slots, winSorted, freeNotes, cityVotes, hubs, withO: withO.length,
       dietC, allergies, actsSorted, hob: Object.entries(hob).sort((a,b)=>b[1]-a[1]),
       budget: budgets.length ? Math.min(...budgets) : null,
       earliestUntil: untils.length ? untils.filter(u=>u!=="late").map(Number).sort((a,b)=>a-b)[0] : null,
@@ -742,19 +1006,28 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const actTop = A.actsSorted.slice(0,4);
     return `
       <div class="card">
-        <h2>📅 بهترین روز</h2>
-        ${A.slots.map((s,k)=>`<div class="slot"><span class="lbl">${k===0?"⭐ ":""}${esc(fmtOpt(s.o))}</span>
+        <h2>📅 بهترین روز و ساعت پیشنهادی</h2>
+        ${A.slots.length ? A.slots.map((s,k)=>`<div class="slot"><span class="lbl">${k===0?"⭐ ":""}${esc(fmtOpt(s.o))}</span>
           <span class="meter"><i style="width:${A.n?s.y/A.n*100:0}%"></i></span>
-          <span class="tiny" style="min-width:92px">${fa(s.y)} می‌تونن${s.m?` · ${fa(s.m)} شاید`:""}</span></div>`).join("")}
+          <span class="tiny" style="min-width:92px">${fa(s.y)} می‌تونن${s.m?` · ${fa(s.m)} شاید`:""}</span></div>`).join("") : ""}
         ${best && best.y === A.n ? `<div class="okbox">همه می‌توانند روز ${esc(fmtOpt(best.o))} 🎉</div>` : ""}
+        ${A.winSorted.length ? `
+          <div style="margin-top:${A.slots.length?10:0}px">
+            <b class="tiny">🗓️ بهترین بازه‌های زمانی مشترک از روی ساعت‌های آزاد بچه‌ها:</b>
+            ${A.winSorted.slice(0,5).map((w,k)=>`<div class="slot"><span class="lbl">${k===0?"⭐ ":""}${esc(fmtWin(w.w))}</span>
+              <span class="meter"><i style="width:${A.n?w.count/A.n*100:0}%"></i></span>
+              <span class="tiny" style="min-width:110px">${fa(w.count)} نفر (${esc(w.names.join("، "))})</span></div>`).join("")}
+          </div>` : (!A.slots.length ? `<p class="muted">وقتی بچه‌ها ساعت‌ها و روزهای آزادشان را در فرم علامت بزنند، بهترین زمان مشترک اینجا پیشنهاد می‌شود.</p>` : "")}
+        ${A.freeNotes.length ? `<div style="margin-top:8px">${A.freeNotes.map(fn=>`<div class="tiny">⏰ <b>${esc(fn.name)}:</b> ${esc(fn.note)}</div>`).join("")}</div>` : ""}
       </div>
       <div class="card">
         <h2>📍 منصفانه‌ترین شهر برای همه</h2>
-        <p class="muted">بر اساس شهر و وسیلهٔ ${fa(A.withO)} نفر؛ هدف این است که راه <b>هیچ‌کس</b> خیلی طولانی نشود.</p>
+        <p class="muted">بر اساس شهر، لوکیشن‌های انتخابی و وسیلهٔ ${fa(A.withO)} نفر؛ هدف این است که راه <b>هیچ‌کس</b> خیلی طولانی نشود.</p>
         ${top.map((t,k)=>`<div class="hub ${k===0?"best":""}">
           <div class="t"><b>${k===0?"🥇":k===1?"🥈":"🥉"} ${esc(t.h.fa)} <span class="tiny ltr">${esc(t.h.nl)}</span></b>
             <button class="btn sm ${k===0?"":"ghost"}" data-venues="${t.h.key}">پیدا کردن جا</button></div>
           <div class="tiny">طولانی‌ترین راه حدود <b>${fa(Math.round(t.maxT))}</b> دقیقه · میانگین ${fa(Math.round(t.avg))} دقیقه
+          ${t.votes?` · <b>${fa(t.votes)} نفر</b> این لوکیشن را انتخاب کرده‌اند`:""}
           ${t.over?` · <span style="color:var(--warn)">برای ${fa(t.over)} نفر بیشتر از سقفشان</span>`:` · <span style="color:var(--ok)">همه زیر سقف خودشان ✓</span>`}</div>
         </div>`).join("")}
         <div id="map"></div>
@@ -852,12 +1125,14 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   /* ============ people ============ */
   function peopleTab(){
     if (!M.people.length) return `<div class="card center"><p class="muted">هنوز کسی نیست.</p></div>`;
-    const ORDER = ["about","age","job","origin","modes","seats","max_min","hobbies","activities","langs","bring","diet","dislikes","allergy","alcohol","smoke","weed","photo","quiet","access","until","night_alone","contact","question"];
+    const ORDER = ["about","age","job","origin","can_cities","free_windows","free_note","modes","seats","max_min","hobbies","activities","langs","bring","diet","dislikes","allergy","alcohol","smoke","weed","photo","quiet","access","until","night_alone","contact","question"];
     return M.people.map(p => {
-      const rows = ORDER.map(k => { const v = showVal(k, p[k]); return v ? `<div class="kv"><b>${LABEL[k]}:</b> ${esc(v)}</div>` : ""; }).join("");
+      const kp = KNOWN_PROFILES.find(x => x.name.toLowerCase() === (p.name||"").toLowerCase());
+      const merged = {...(kp?.data || {}), ...p};
+      const rows = ORDER.map(k => { const v = showVal(k, merged[k]); return v ? `<div class="kv"><b>${LABEL[k]}:</b> ${esc(v)}</div>` : ""; }).join("");
       const days = p.avail ? M.options.map((o,i)=>p.avail[i]==="yes"?fmtOpt(o):null).filter(Boolean) : [];
       return `<div class="card person"><div class="av" style="background:${colorOf(p.name)}">${esc([...p.name][0]||"?")}</div>
-        <div class="grow"><b style="font-size:16px">${esc(p.name)}</b>${rows || '<div class="tiny">بقیهٔ جواب‌ها را خصوصی نگه داشته 🔒</div>'}
+        <div class="grow"><div class="row" style="justify-content:space-between"><b style="font-size:16px">${esc(p.name)}</b><a class="tiny" href="/d?u=${encodeURIComponent(p.name)}">🔗 پروفایل</a></div>${rows || '<div class="tiny">بقیهٔ جواب‌ها را خصوصی نگه داشته 🔒</div>'}
         ${days.length?`<div class="kv"><b>می‌تواند:</b> ${esc(days.join(" · "))}</div>`:""}</div></div>`;
     }).join("") + `<p class="tiny center">هر کس فقط چیزهایی را نشان می‌دهد که خودش خواسته.</p>`;
   }
@@ -897,10 +1172,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const pick = store.get("dh_pick_"+CODE) || {};
     const bestSlot = A.slots[0], bestHub = A.hubs[0];
     const sel = (bestSlot && !f.d) ? bestSlot.i : M.options.findIndex(o => o.d === f.d && o.t === f.t);
+    const defaultDate = f.d || new Date(Date.now() + 2*86400000).toISOString().slice(0,10);
     return `<div class="card"><h2>🔑 قطعی کردن (فقط تو می‌بینی)</h2>
       <label class="f">روز</label>
-      <select id="a_slot">${M.options.map((o,i)=>`<option value="${i}" ${i===sel?"selected":""}>${esc(fmtOpt(o))}${A.slots.find(s=>s.i===i)?` — ${fa(A.slots.find(s=>s.i===i).y)} نفر می‌تونن`:""}</option>`).join("")}</select>
-      <label class="f">ساعت</label><input type="time" id="a_time" value="${esc(f.t || (M.options[Math.max(sel,0)]||{}).t || "15:00")}">
+      ${M.options.length
+        ? `<select id="a_slot">${M.options.map((o,i)=>`<option value="${i}" ${i===sel?"selected":""}>${esc(fmtOpt(o))}${A.slots.find(s=>s.i===i)?` — ${fa(A.slots.find(s=>s.i===i).y)} نفر می‌تونن`:""}</option>`).join("")}</select>`
+        : `<input type="date" id="a_date" value="${esc(defaultDate)}">`}
+      <label class="f">ساعت</label><input type="time" id="a_time" value="${esc(f.t || (M.options[Math.max(sel,0)]||{}).t || "16:00")}">
       <label class="f">شهر</label>
       <select id="a_city">${CITIES.filter(c=>c.meet).map(c=>`<option value="${c.key}" ${(pick.city||f.city||(bestHub&&bestHub.h.key))===c.key?"selected":""}>${esc(c.fa)}</option>`).join("")}</select>
       <label class="f">اسم جا</label><input type="text" id="a_venue" maxlength="100" value="${esc(pick.venue||f.venue||"")}" placeholder="از «پیدا کردن جا» انتخاب کن یا بنویس">
@@ -913,9 +1191,9 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   }
   function bindAdmin(A){
     if (!ADMIN || !$("#a_go")) return;
-    $("#a_slot").onchange = () => { const o = M.options[+$("#a_slot").value]; if (o && o.t) $("#a_time").value = o.t; };
+    if ($("#a_slot")) $("#a_slot").onchange = () => { const o = M.options[+$("#a_slot").value]; if (o && o.t) $("#a_time").value = o.t; };
     $("#a_go").onclick = async () => {
-      const o = M.options[+$("#a_slot").value];
+      const o = $("#a_slot") ? M.options[+$("#a_slot").value] : {d: ($("#a_date")||{}).value || new Date().toISOString().slice(0,10)};
       const fin = {d:o.d, t:$("#a_time").value, city:$("#a_city").value, venue:$("#a_venue").value.trim(), address:$("#a_addr").value.trim(), note:$("#a_note").value.trim()};
       try { await rpc("dh_finalize", {p_code:CODE, p_admin:ADMIN, p_final:fin}); toast("قطعی شد ✓");
         const city = (cityByKey(fin.city)||{}).fa || "";

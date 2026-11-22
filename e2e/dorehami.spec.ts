@@ -94,3 +94,37 @@ test('guest: second meetup remembers answers — name → days → review', asyn
   await expect(page.locator('[data-diet=vegan]')).toHaveClass(/on/);
   await cleanup();
 });
+
+test('open "بریم بیرون؟" meetup without preset dates + loading previous friends profile', async ({ page }) => {
+  test.skip(!hasDb, 'no test backend configured');
+  page.on('dialog', (d) => (d.message().includes('واتس') ? d.dismiss() : d.accept()));
+  await page.goto('/d');
+  // Create open meetup without predetermined dates
+  await page.locator('#c_title').fill('بریم بیرون تست e2e');
+  await page.locator('#c_go_open').click();
+  await expect(page.getByRole('heading', { name: 'آماده است!' })).toBeVisible();
+  await page.getByRole('link', { name: /فرم خودم را پر کنم/ }).click();
+
+  await page.locator('#f_name').fill('مهمان');
+  await page.locator('#f_next').click();
+  await page.locator('[data-k=rotterdam]').click();
+  await page.locator('[data-cancity=delft]').click();
+  await page.locator('#f_next').click();
+  await page.locator('[data-mode=ov]').click();
+  await page.locator('#f_next').click();
+
+  // In open mode, pick free day/time windows instead of preset dates
+  await page.locator('[data-fwin="sat:evening"]').click();
+  await page.locator('[data-fwin="sun:afternoon"]').click();
+  await page.locator('#f_next').click();
+  for (let i = 0; i < 5; i++) await page.locator('#f_next').click();
+  await expect(page.getByRole('heading', { name: /آماده است/ })).toBeVisible();
+  await page.locator('#f_next').click();
+
+  await expect(page.getByText(/بهترین بازه‌های زمانی مشترک/)).toBeVisible();
+  await expect(page.getByText(/شنبه عصر/)).toBeVisible();
+
+  await page.locator('[data-tab=share]').click();
+  await page.locator('#a_delete').click();
+  await expect(page).toHaveURL(/\/d$/);
+});
