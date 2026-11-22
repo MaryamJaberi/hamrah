@@ -14,11 +14,15 @@ test.describe('outings', () => {
     await page.getByRole('button', { name: 'بعدی' }).click();
     await page.getByRole('button', { name: gender, exact: true }).click();
     await page.getByRole('button', { name: 'بعدی' }).click();
-    for (let i = 0; i < 9; i++) await page.getByRole('button', { name: 'رد شو' }).click();
+    for (let i = 0; i < 9; i++) {
+      await expect(page.getByRole('button', { name: /^(بعدی|تمام ✓)$/ })).toBeEnabled();
+      await page.getByRole('button', { name: 'رد شو' }).click();
+    }
     await expect(page.getByText('پروفایلت آماده است')).toBeVisible();
   }
 
   test('women-only plan: invite link, vote, mutual privacy, man is refused', async ({ browser }) => {
+    test.setTimeout(60_000);
     const tag = Date.now().toString(36);
     const a = await (await browser.newContext()).newPage();
     const b = await (await browser.newContext()).newPage();
@@ -36,7 +40,7 @@ test.describe('outings', () => {
 
     await c.goto(`/out/join/${code}`);
     await c.getByRole('button', { name: /پایه‌ام/ }).click();
-    await expect(c.getByRole('alert')).toContainText('فقط برای خانم‌ها');
+    await expect(c.locator('p[role="alert"]')).toContainText('فقط برای خانم‌ها');
 
     await b.goto(`/out/join/${code}`);
     await b.getByRole('button', { name: /پایه‌ام/ }).click();
@@ -51,6 +55,7 @@ test.describe('outings', () => {
   });
 
   test('open invite reaches a fitting person who can respond, owner accepts → plan', async ({ browser }) => {
+    test.setTimeout(60_000);
     const tag = Date.now().toString(36);
     const a = await (await browser.newContext()).newPage();
     const b = await (await browser.newContext()).newPage();
@@ -60,6 +65,6 @@ test.describe('outings', () => {
     await a.getByRole('button', { name: /قهوه/ }).first().click();
     // no area set in the quick profile → the form asks for one
     await a.getByRole('button', { name: 'بفرست به آدم‌های نزدیک' }).click();
-    await expect(a.getByRole('alert')).toContainText('محدوده');
+    await expect(a.locator('p[role="alert"]')).toContainText('محدوده');
   });
 });

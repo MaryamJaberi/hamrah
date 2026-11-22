@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 
 // «دورهمی» is public: these run as a guest (no login). They need the test database (NEXT_PUBLIC_SUPABASE_*)
 // because creating a meetup writes to it; each test deletes what it created.
+const hasDb = !!process.env.NEXT_PUBLIC_SUPABASE_URL && !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('example.supabase.co');
 
 test('/d is open to guests, /discover still needs login', async ({ page }) => {
   await page.goto('/d');
@@ -12,6 +13,7 @@ test('/d is open to guests, /discover still needs login', async ({ page }) => {
 });
 
 test('guest: create → answer → result → finalize → delete', async ({ page }) => {
+  test.skip(!hasDb, 'no test backend configured');
   page.on('dialog', (d) => (d.message().includes('واتس') ? d.dismiss() : d.accept()));
   await page.goto('/d');
   await page.locator('#c_title').fill('دورهمی تست e2e');
@@ -47,6 +49,7 @@ test('guest: create → answer → result → finalize → delete', async ({ pag
 });
 
 test('guest: second meetup remembers answers — name → days → review', async ({ page }) => {
+  test.skip(!hasDb, 'no test backend configured');
   page.on('dialog', (d) => (d.message().includes('واتس') ? d.dismiss() : d.accept()));
   const make = async (title: string) => {
     await page.goto('/d');

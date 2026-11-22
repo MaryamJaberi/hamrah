@@ -42,7 +42,7 @@ export default function Builder({ userId, name, initial, initialLs }: { userId: 
   const [tag, setTag] = useState({ hob: '', liked: '', been: '' });
   const bottom = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [step]);
+  useEffect(() => { bottom.current?.scrollIntoView({ behavior: 'instant', block: 'center' }); }, [step]);
 
   async function save(next: number, patch: Partial<typeof p> = {}) {
     setSaving(true); setErr('');
