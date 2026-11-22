@@ -180,6 +180,43 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   ];
   const fmtTimeBucket = (k) => (TIME_BUCKETS.find(x => x[0] === k) || [, fmtWin(k)])[1];
 
+  const EVENT_IDEAS = [
+    { k: "cafe", icon: "☕", label: "کافه و گپ", title: "کافه و گپ دوستانه ☕", note: "بریم یه کافه بشینیم، قهوه بخوریم و گپ بزنیم ☕", target: "group" },
+    { k: "run", icon: "🏃‍♀️", label: "دویدن صبحگاهی", title: "همراه برای دویدن صبحگاهی 🏃‍♀️", note: "دنبال یک همراه می‌گردم صبح‌ها با هم بریم بدویم 🏃‍♀️", target: "pair" },
+    { k: "walk", icon: "🌳", label: "پیاده‌روی و طبیعت", title: "پیاده‌روی در طبیعت و پارک 🌳", note: "پیاده‌روی در پارک و هواخوری 🌿", target: "group" },
+    { k: "food", icon: "🍽️", label: "رستوران و شام", title: "دورهمی شام یا ناهار 🍽️", note: "بریم یک رستوران خوب و خوشمزه با هم 🍽️", target: "group" },
+    { k: "boardgame", icon: "🎲", label: "بردگیم و مافیا", title: "شب بازی و بردگیم 🎲", note: "دورهمی برای بازی‌های فکری و مافیا 🎲", target: "group" },
+    { k: "study", icon: "📚", label: "هم‌پای مطالعه و کار", title: "هم‌پای مطالعه و کتابخوانی 📚", note: "بریم کتابخونه یا کافه با هم مطالعه و کار کنیم 📚", target: "pair" },
+    { k: "picnic", icon: "🧺", label: "پیک‌نیک و پارک", title: "پیک‌نیک و دورهمی در پارک 🧺", note: "بریم پارک بشینیم و عصرانه بخوریم 🧺", target: "group" },
+    { k: "cinema", icon: "🎬", label: "سینما و فیلم", title: "سینما و تماشای فیلم 🎬", note: "بریم با هم فیلم ببینیم 🎬", target: "group" },
+    { k: "bike", icon: "🚴", label: "دوچرخه‌سواری", title: "دوچرخه‌سواری با هم 🚴", note: "یه گشت با دوچرخه در مسیرهای قشنگ 🚴", target: "pair" },
+    { k: "sport", icon: "🏸", label: "ورزش و تحرک", title: "ورزش یا بدمینتون 🏸", note: "ورزش و تحرک دو یا چند نفره 🏸", target: "pair" },
+    { k: "museum", icon: "🖼️", label: "موزه و گالری", title: "موزه‌گردی و نمایشگاه 🖼️", note: "بازدید از موزه و نمایشگاه‌های هنری 🖼️", target: "group" },
+    { k: "market", icon: "🛍️", label: "خرید و بازارگردی", title: "گشت در بازار و خرید 🛍️", note: "بازارگردی و خرید با هم 🛍️", target: "pair" },
+  ];
+
+  function detectActivityIcon(t) {
+    const s = String(t || "").toLowerCase();
+    if (s.includes("کافه") || s.includes("قهوه") || s.includes("cafe")) return "☕";
+    if (s.includes("دویدن") || s.includes("ورزش") || s.includes("بدمینتون") || s.includes("run") || s.includes("sport")) return "🏃‍♀️";
+    if (s.includes("پیاده") || s.includes("پارک") || s.includes("طبیعت") || s.includes("walk")) return "🌳";
+    if (s.includes("رستوران") || s.includes("غذا") || s.includes("شام") || s.includes("ناهار") || s.includes("food")) return "🍽️";
+    if (s.includes("بردگیم") || s.includes("بازی") || s.includes("مافیا") || s.includes("game")) return "🎲";
+    if (s.includes("سینما") || s.includes("فیلم") || s.includes("cinema")) return "🎬";
+    if (s.includes("پیک‌نیک") || s.includes("picnic")) return "🧺";
+    if (s.includes("کتاب") || s.includes("مطالعه") || s.includes("study")) return "📚";
+    if (s.includes("دوچرخه") || s.includes("bike")) return "🚴";
+    if (s.includes("موزه") || s.includes("گالری") || s.includes("museum")) return "🖼️";
+    if (s.includes("بازار") || s.includes("خرید") || s.includes("shop")) return "🛍️";
+    return "✨";
+  }
+
+  function detectTargetType(t, note) {
+    const s = `${t || ""} ${note || ""}`.toLowerCase();
+    if (s.includes("همراه") || s.includes("دونفره") || s.includes("دو نفره") || s.includes("هم‌پا") || s.includes("یک نفر") || s.includes("۱ به ۱")) return "pair";
+    return "group";
+  }
+
   function renderLocationControl(dataObj, prefix) {
     const useRad = dataObj.use_radius !== false;
     const curMin = Number(dataObj?.max_min) || 45;
@@ -821,7 +858,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     app.innerHTML = topbar() + `
       <div class="card">
         <h1>✨ یک دورهمی بساز یا با کد وارد شو</h1>
-        <p class="muted" style="margin-bottom:10px">کد دورهمی را وارد کن تا ترجیحاتت را ثبت کنی، یا یک دورهمی تازه بساز و کدش را برای دوستانت بفرست:</p>
+        <p class="muted" style="margin-bottom:10px">ایونت یا قراری که دوست داری را تعریف کن تا بقیه بگویند کِی و کجا می‌توانند، یا با کد وارد دورهمی شو:</p>
 
         <div class="seg">
           <button type="button" id="mode_create_tab" class="on">✨ یک دورهمی بساز</button>
@@ -838,14 +875,33 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         </div>
 
         <div id="create_pane">
+          <div style="background:#f9f8fe;border:1.5px solid #ebe4fb;border-radius:16px;padding:12px;margin-bottom:12px">
+            <label class="f" style="margin-top:0;font-size:13.5px;font-weight:700">💡 چه قراری یا ایونتی در ذهن داری؟ (یکی را بزن تا پر شود، یا خودت بنویس):</label>
+            <div class="chips" id="c_idea_chips" style="gap:6px;margin-top:6px">
+              ${EVENT_IDEAS.map(idea => `
+                <span class="idea-chip" data-idea="${idea.k}">
+                  ${idea.icon} ${esc(idea.label)}
+                </span>
+              `).join("")}
+            </div>
+          </div>
+
           <div class="row" style="gap:8px;flex-wrap:wrap">
             <div style="flex:1;min-width:140px">
-              <label class="f" style="margin-top:2px">اسم تو (سازندهٔ دورهمی)</label>
+              <label class="f" style="margin-top:2px">اسم تو (برگزارکننده)</label>
               <input type="text" id="c_org" maxlength="40" placeholder="مثلاً مریم" value="${esc(myName)}">
             </div>
-            <div style="flex:1.3;min-width:170px">
-              <label class="f" style="margin-top:2px">عنوان (اختیاری — اجباری نیست)</label>
-              <input type="text" id="c_title" maxlength="80" placeholder="خالی بگذاری: دورهمیِ تو ✨">
+            <div style="flex:1.4;min-width:180px">
+              <label class="f" style="margin-top:2px">عنوان ایونت یا قرار</label>
+              <input type="text" id="c_title" maxlength="80" placeholder="مثلاً: کافه و گپ، دویدن صبحگاهی…">
+            </div>
+          </div>
+
+          <div class="row" style="gap:8px;margin-top:10px;margin-bottom:6px;align-items:center;flex-wrap:wrap">
+            <span class="tiny" style="font-weight:700">مدل همراهی:</span>
+            <div class="seg sm" style="margin:0;flex:1;min-width:210px">
+              <button type="button" id="c_tgt_group" class="on">👥 دورهمی گروهی (چند نفره)</button>
+              <button type="button" id="c_tgt_pair">👯‍♀️ همراه دو‌نفره (هم‌پا / ۱ به ۱)</button>
             </div>
           </div>
 
@@ -883,22 +939,32 @@ export function mount(root: HTMLElement, opts: DhOptions) {
 
       ${mine.length ? `
         <div class="card">
-          <h2>🌿 دورهمی‌های موجود</h2>
+          <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+            <h2 style="margin:0">🌿 ایونت‌ها و قرارهای دوستان</h2>
+            <span class="tiny">می‌توانی وارد شوی و زمان و مکانت را بفرستی</span>
+          </div>
+          <p class="muted tiny" style="margin-top:2px;margin-bottom:12px">روی هر ایونت بزن تا ساعت‌های آزاد و شهرهایت را بفرستی؛ سیستم بهترین زمان و شهر مشترک را پیدا می‌کند:</p>
           ${mine.map(m => {
-            const org = m.organizer_name ? `سازنده: ${m.organizer_name}` : "دورهمی گروهی";
-            const cnt = m.count != null ? `${fa(m.count)} نفر شرکت کرده‌اند` : "مشاهده و ثبت ترجیحات";
+            const org = m.organizer_name ? `برگزارکننده: ${m.organizer_name}` : "دورهمی گروهی";
+            const cnt = m.count != null ? `${fa(m.count)} نفر اعلام آمادگی کرده‌اند` : "مشاهده و ثبت ترجیحات";
+            const icon = detectActivityIcon(m.title);
+            const isPair = detectTargetType(m.title, m.note) === "pair";
             return `
             <a class="meetup-item" href="/d/${esc(m.code)}${m.admin && m.admin !== "account"?`?admin=${esc(m.admin)}`:""}">
-              <div>
-                <div class="row" style="gap:6px;margin-bottom:2px">
-                  <b style="font-size:15.5px">${esc(m.title || (m.organizer_name ? "دورهمی " + m.organizer_name : "دورهمی"))}</b>
-                  <code class="tiny" style="background:#eeeaf8;padding:1px 6px;border-radius:6px;color:var(--p)">#${esc(m.code)}</code>
+              <div style="display:flex;align-items:flex-start;gap:10px">
+                <span style="font-size:26px;line-height:1;margin-top:2px">${icon}</span>
+                <div>
+                  <div class="row" style="gap:6px;margin-bottom:4px;flex-wrap:wrap;align-items:center">
+                    <b style="font-size:15.5px">${esc(m.title || (m.organizer_name ? "دورهمی " + m.organizer_name : "قرار دورهمی"))}</b>
+                    <code class="tiny" style="background:#eeeaf8;padding:1px 6px;border-radius:6px;color:var(--p)">#${esc(m.code)}</code>
+                    <span class="pill sm" style="background:${isPair?"#fff0f6":"#f0f5ff"};color:${isPair?"#d63384":"#0d6efd"}">${isPair ? "👯‍♀️ همراه دونفره" : "👥 گروهی"}</span>
+                  </div>
+                  <div class="tiny">👤 ${esc(org)} · 👥 ${cnt}</div>
                 </div>
-                <div class="tiny">👤 ${esc(org)} · 👥 ${cnt}</div>
               </div>
               <div class="row" style="gap:4px">
                 ${m.final?'<span class="pill g">قطعی</span>':""}
-                ${m.admin?'<span class="pill">سازنده</span>':'<span class="pill">ورود ←</span>'}
+                ${m.admin?'<span class="pill">مدیریت</span>':'<span class="pill">ورود و ثبت ساعت ←</span>'}
               </div>
             </a>`;
           }).join("")}
@@ -979,19 +1045,60 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     if ($("#seg_fixed")) $("#seg_fixed").onclick = () => setSegMode(false);
     let wo = false;
     $("#c_wo").onclick = e => { wo = !wo; e.currentTarget.classList.toggle("on", wo); };
+
+    let currentTarget = "group";
+    const updateTargetUI = (tgt) => {
+      currentTarget = tgt;
+      $("#c_tgt_group")?.classList.toggle("on", tgt === "group");
+      $("#c_tgt_pair")?.classList.toggle("on", tgt === "pair");
+      const btnOpen = $("#c_go_open");
+      if (btnOpen) {
+        btnOpen.textContent = tgt === "pair" ? "👯‍♀️ ساخت قرار همراهی و گرفتن کد و لینک ✨" : "🙋‍♀️ ساخت دورهمی باز و گرفتن کد و لینک ✨";
+      }
+    };
+    if ($("#c_tgt_group")) $("#c_tgt_group").onclick = () => updateTargetUI("group");
+    if ($("#c_tgt_pair")) $("#c_tgt_pair").onclick = () => updateTargetUI("pair");
+
+    $("#c_idea_chips")?.querySelectorAll("[data-idea]").forEach(el => {
+      el.onclick = () => {
+        $("#c_idea_chips").querySelectorAll("[data-idea]").forEach(x => x.classList.remove("on"));
+        el.classList.add("on");
+        const key = el.dataset.idea;
+        const idea = EVENT_IDEAS.find(x => x.k === key);
+        if (idea) {
+          if ($("#c_title")) $("#c_title").value = idea.title;
+          if ($("#c_note") && (!$("#c_note").value || EVENT_IDEAS.some(x => x.note === $("#c_note").value))) {
+            $("#c_note").value = idea.note;
+          }
+          if (idea.target) updateTargetUI(idea.target);
+        }
+      };
+    });
+
     async function createMeetup(forceOpen = false) {
       const isOpen = forceOpen || openSchedule;
       const orgName = $("#c_org").value.trim();
       const rawTitle = $("#c_title").value.trim();
-      const title = rawTitle || (orgName ? `دورهمی ${orgName} ✨` : (isOpen ? "بریم بیرون؟ ✨" : "دورهمی ✨"));
+      const defaultTitle = currentTarget === "pair"
+        ? (orgName ? `قرار همراهی ${orgName} 👯‍♀️` : (isOpen ? "همراه برای بیرون رفتن 👯‍♀️" : "قرار همراهی 👯‍♀️"))
+        : (orgName ? `دورهمی ${orgName} ✨` : (isOpen ? "بریم بیرون؟ ✨" : "دورهمی ✨"));
+      const title = rawTitle || defaultTitle;
       const good = isOpen ? [] : opts.filter(o => o.d).slice(0,10);
       if (!isOpen && !good.length) { $("#c_err").innerHTML = `<div class="err">حداقل یک روز انتخاب کن (یا دکمهٔ «بریم بیرون؟ بدون تعیین وقت» را بزن).</div>`; return; }
       const b = forceOpen ? $("#c_go_open") : $("#c_go"); b.disabled = true; b.innerHTML = `<span class="spin"></span>`;
+      let note = ($("#c_note")?.value || "").trim();
+      if (currentTarget === "pair" && !note.includes("همراه دو‌نفره")) {
+        note = `[همراه دو‌نفره] ${note}`.trim();
+      }
       try {
-        const r = await rpc("dh_create", {p_title:title, p_note:$("#c_note").value, p_organizer:orgName, p_options:good, p_women_only:wo});
+        const r = await rpc("dh_create", {p_title:title, p_note:note, p_organizer:orgName, p_options:good, p_women_only:wo});
         store.set("dh_"+r.code, {title, organizer_name: orgName, admin:r.admin_token});
         go(`/d/${r.code}?admin=${r.admin_token}&new=1`);
-      } catch(e){ $("#c_err").innerHTML = `<div class="err">${esc(errMsg(e))}</div>`; b.disabled=false; b.textContent = forceOpen ? "🙋‍♀️ ساخت دورهمی باز و گرفتن کد و لینک ✨" : "📅 ساخت با روز و ساعت مشخص"; }
+      } catch(e){
+        $("#c_err").innerHTML = `<div class="err">${esc(errMsg(e))}</div>`;
+        b.disabled=false;
+        b.textContent = forceOpen ? (currentTarget === "pair" ? "👯‍♀️ ساخت قرار همراهی و گرفتن کد و لینک ✨" : "🙋‍♀️ ساخت دورهمی باز و گرفتن کد و لینک ✨") : "📅 ساخت با روز و ساعت مشخص";
+      }
     }
     $("#c_go").onclick = () => createMeetup(false);
     $("#c_go_open").onclick = () => createMeetup(true);
@@ -1044,7 +1151,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   function createdPage(){
     const adminLink = `${linkFor(M.code)}?admin=${ADMIN}`;
     app.innerHTML = topbar() + `
-      <header class="top"><span class="logo">🌿</span><div><b>${esc(M.title)}</b><small>ساخته شد · کد: #${esc(M.code)}</small></div></header>
+      <header class="top"><span class="logo">${detectActivityIcon(M.title)}</span><div><b>${esc(M.title)}</b><small>ساخته شد · کد: #${esc(M.code)}</small></div></header>
       <div class="card"><div class="hero-e">🎉</div><h1>آماده است!</h1>
         <p>کد یا لینک زیر را برای دوستانت بفرست تا ساعت‌ها و محدودهٔ مکانشان را روی نقشه بزنند:</p>${shareButtons()}</div>
       <div class="card"><h2>🔑 لینک مخصوص خودت (برگزارکننده)</h2>
@@ -1082,8 +1189,12 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           </div>
           <code class="tiny" style="background:#fff;padding:2px 8px;border-radius:6px;color:var(--p)">کد: #${esc(M.code)}</code>
         </div>
-        <h1>${esc(M.title)}</h1>
-        ${M.note?`<p>${esc(M.note)}</p>`:""}
+        <div class="row" style="gap:8px;align-items:center;margin-bottom:6px">
+          <span style="font-size:26px">${detectActivityIcon(M.title)}</span>
+          <h1 style="margin:0">${esc(M.title)}</h1>
+        </div>
+        ${detectTargetType(M.title, M.note) === "pair" ? `<div class="pill sm" style="background:#fff0f6;color:#d63384;display:inline-block;margin-bottom:8px">👯‍♀️ همراه دو‌نفره (هم‌پا)</div>` : ""}
+        ${M.note?`<div class="okbox" style="margin:8px 0;background:#f6f4fe;border-color:#d7cbfa">💬 <b>پیام ${esc(M.organizer_name || "برگزارکننده")}:</b> ${esc(M.note.replace(/^\[همراه دو‌نفره\]\s*/, ""))}</div>`:""}
         <p class="muted">بگو چه روزها، چه ساعت‌هایی و تا چه محدوده‌ای روی نقشه می‌توانی بیایی تا بهترین زمان و مکان مشترک برای همه پیدا شود. ${M.women_only?"<b>این دورهمی فقط برای خانم‌هاست.</b>":""}</p>
         ${quick?`<div class="okbox">✨ جواب‌های دفعهٔ قبلت را گذاشتم: مبدأ (${esc(D.origin?.fa || "ثبت‌شده")})، وسیله، غذا، ترجیح‌ها و حریم خصوصی. فقط ساعت‌ها و محدوده‌ای که این بار می‌تونی رو بزن؛ در صفحهٔ آخر هر بخش را خواستی با یک ضربه عوض کن.</div>`
           : prefilled?`<div class="note">✨ چند جواب را از پروفایل «همراه»ت پر کردم. هر کدام را خواستی عوض کن.</div>`:""}
@@ -1384,7 +1495,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     function draw(){
       const s = steps[i];
       app.innerHTML = topbar() + `
-        <header class="top"><span class="logo">🌿</span><div><b>${esc(M.title)}</b><small>${M.count?fa(M.count)+" نفر تا الان پر کرده‌اند":"اولین نفری 🎈"}</small></div></header>
+        <header class="top"><span class="logo">${detectActivityIcon(M.title)}</span><div><b>${esc(M.title)}</b><small>${M.count?fa(M.count)+" نفر تا الان پر کرده‌اند":"اولین نفری 🎈"}</small></div></header>
         <div class="step-h"><span>${esc(s.t)}</span><span>${quick ? `${fa([idx("hi"),idx("avail"),idx("review")].indexOf(i)+1 || 2)} از ۳ · سریع` : `${fa(i+1)} از ${fa(steps.length)}`}</span></div>
         <div class="prog"><i style="width:${quick ? (([idx("hi"),idx("avail"),idx("review")].indexOf(i)+1 || 2)/3*100) : (i+1)/steps.length*100}%"></i></div>
         <div class="card">${s.draw()}</div><div id="f_err"></div>
@@ -1505,7 +1616,9 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const A = analyse();
     const my = store.get("dh_"+CODE) || {};
     app.innerHTML = topbar() + `
-      <header class="top"><span class="logo">🌿</span><div><b>${esc(M.title)}</b><small>${fa(A.n)} نفر فرم را پر کرده‌اند${M.organizer_name?" · برگزارکننده: "+esc(M.organizer_name):""}</small></div></header>
+      <header class="top"><span class="logo">${detectActivityIcon(M.title)}</span><div><b>${esc(M.title)}</b><small>${fa(A.n)} نفر فرم را پر کرده‌اند${M.organizer_name?" · برگزارکننده: "+esc(M.organizer_name):""}</small></div></header>
+      ${detectTargetType(M.title, M.note) === "pair" ? `<div class="pill sm" style="background:#fff0f6;color:#d63384;display:inline-block;margin-bottom:8px">👯‍♀️ قرار همراهی دو‌نفره (هم‌پا)</div>` : ""}
+      ${M.note ? `<div class="okbox" style="margin:8px 0;background:#f6f4fe;border-color:#d7cbfa">💬 <b>پیام ${esc(M.organizer_name || "برگزارکننده")}:</b> ${esc(M.note.replace(/^\[همراه دو‌نفره\]\s*/, ""))}</div>` : ""}
       ${M.final ? finalCard(M.final) : ""}
       <div class="tabs">
         ${[["result","🧭 نتیجه"],["people","👯‍♀️ آدم‌ها"],["ice","🧊 یخ‌شکن"],["share","📤 دعوت"]].map(([k,l])=>`<span class="tab ${TAB===k?"on":""}" data-tab="${k}">${l}</span>`).join("")}
