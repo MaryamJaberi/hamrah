@@ -850,8 +850,8 @@ export function mount(root: HTMLElement, opts: DhOptions) {
 
     app.innerHTML = topbar() + `
       <div class="card">
-        <h1>✨ یک دورهمی بساز یا پیدا کن</h1>
-        <p class="muted" style="margin-bottom:12px">ایونت یا قراری که دوست داری را بساز، یا قرارهای دوستان را پیدا کن و ملحق شو:</p>
+        <h1>✨ یک دورهمی بساز</h1>
+        <p class="muted" style="margin-bottom:12px;font-size:13.5px">ایونت یا قراری که در ذهن داری را بساز تا بقیه بگویند کِی و کجا می‌توانند، یا قرارهای دوستان را ببین:</p>
 
         <div class="seg" style="margin-bottom:14px">
           <button type="button" id="mode_create_tab" class="on">✨ ساخت ایونت</button>
@@ -859,51 +859,59 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         </div>
 
         <div id="create_pane">
-          <div class="row" style="gap:8px;flex-wrap:wrap">
+          <div style="margin-bottom:12px">
+            <label class="f" style="margin-top:2px;font-weight:700">موضوع یا ایدهٔ قرار چیه؟</label>
+            <input type="text" id="c_title" maxlength="80" placeholder="مثلاً: کافه و گپ، دویدن صبحگاهی، بردگیم…" style="font-size:15px;padding:10px 12px">
+            <div class="quick-ideas" id="c_idea_chips">
+              ${EVENT_IDEAS.map(idea => `
+                <span class="qidea" data-idea="${idea.k}">${idea.icon} ${esc(idea.label)}</span>
+              `).join("")}
+            </div>
+          </div>
+
+          <div class="row" style="gap:10px;margin-bottom:12px;align-items:flex-end;flex-wrap:wrap">
             <div style="flex:1;min-width:130px">
-              <label class="f" style="margin-top:2px">اسم تو</label>
+              <label class="f" style="margin-top:0">اسم تو (برگزارکننده)</label>
               <input type="text" id="c_org" maxlength="40" placeholder="مثلاً مریم" value="${esc(myName)}">
             </div>
-            <div style="flex:1.5;min-width:180px">
-              <label class="f" style="margin-top:2px">عنوان یا موضوع قرار</label>
-              <input type="text" id="c_title" maxlength="80" placeholder="مثلاً: دویدن صبحگاهی، کافه و گپ…">
-              <div class="quick-ideas" id="c_idea_chips">
-                ${EVENT_IDEAS.map(idea => `
-                  <span class="qidea" data-idea="${idea.k}">${idea.icon} ${esc(idea.label)}</span>
-                `).join("")}
+            <div style="flex:1.4;min-width:170px">
+              <label class="f" style="margin-top:0">نوع قرار</label>
+              <div class="seg sm" style="margin:0">
+                <button type="button" id="c_tgt_group" class="on">👥 چندنفره (گروهی)</button>
+                <button type="button" id="c_tgt_pair">👯‍♀️ دونفره (۱ به ۱)</button>
               </div>
             </div>
           </div>
 
-          <div class="row" style="gap:6px;margin-top:4px;flex-wrap:wrap">
-            <div class="seg sm" style="margin:0;flex:1;min-width:160px">
-              <button type="button" id="c_tgt_group" class="on">👥 دورهمی گروهی</button>
-              <button type="button" id="c_tgt_pair">👯‍♀️ همراه دونفره (۱ به ۱)</button>
-            </div>
-            <div class="seg sm" style="margin:0;flex:1;min-width:160px">
-              <button type="button" id="seg_open" class="on">🙋‍♀️ زمان شناور</button>
-              <button type="button" id="seg_fixed">📅 روز و ساعت مشخص</button>
+          <div style="margin-bottom:12px">
+            <label class="f" style="margin-top:0">زمان‌بندی دورهمی</label>
+            <div class="seg sm" style="margin:0">
+              <button type="button" id="seg_open" class="on">🙋‍♀️ زمان شناور (بقیه ساعات آزادشان را می‌گویند)</button>
+              <button type="button" id="seg_fixed">📅 با روز و ساعت مشخص</button>
             </div>
           </div>
 
-          <div id="c_fixed_box" style="display:none;margin-top:8px;padding:10px;background:#f8f7fc;border-radius:12px">
-            <b style="font-size:13px;display:block;margin-bottom:6px">📅 انتخاب تاریخ و ساعت:</b>
+          <div id="c_fixed_box" style="display:none;margin-bottom:12px;padding:12px;background:#f8f7fc;border:1px solid #e7e2f5;border-radius:14px">
+            <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+              <b style="font-size:13px">📅 تاریخ و ساعت‌های انتخابی:</b>
+              <span class="tiny">می‌توانی چند گزینه بدهی تا بهترین انتخاب شود</span>
+            </div>
             <div id="c_opts"></div>
             <button class="btn ghost sm" id="c_add" style="margin-top:4px">+ یک تاریخ دیگر</button>
           </div>
 
-          <details style="margin-top:6px">
-            <summary class="tiny" style="cursor:pointer;color:var(--muted)">+ توضیح اختیاری یا فقط خانم‌ها…</summary>
-            <div style="margin-top:6px">
-              <input type="text" id="c_note" maxlength="300" placeholder="توضیح کوتاه (اختیاری): مثلاً صبح‌ها قبل از کار…">
-              <div class="opt" id="c_wo" style="margin-top:6px"><span class="e">👩</span><div><b>فقط برای خانم‌ها</b></div></div>
+          <details style="margin-bottom:12px;background:#fbfaff;padding:8px 12px;border-radius:12px;border:1px solid #eeeaf8">
+            <summary class="tiny" style="cursor:pointer;color:var(--muted);font-weight:600">+ توضیح اختیاری یا فقط برای خانم‌ها…</summary>
+            <div style="margin-top:8px">
+              <input type="text" id="c_note" maxlength="300" placeholder="توضیح کوتاه (اختیاری): مثلاً صبح‌ها قبل از کار در پارک…" style="margin-bottom:6px">
+              <div class="opt" id="c_wo"><span class="e">👩</span><div><b>فقط برای خانم‌ها</b></div></div>
             </div>
           </details>
 
           <div id="c_err"></div>
           <div class="row" style="gap:8px;margin-top:10px">
-            <button class="btn grow" id="c_go_open" style="font-size:15px;padding:11px 18px">🚀 ساخت قرار و دریافت لینک اشتراک ✨</button>
-            <button class="btn line sm" id="c_go">📅 با روز و ساعت مشخص</button>
+            <button class="btn grow" id="c_go_open" style="font-size:15px;padding:12px 18px">🚀 ساخت قرار و دریافت لینک اشتراک ✨</button>
+            <button class="btn line sm" id="c_go" style="white-space:nowrap">📅 با روز و ساعت مشخص</button>
           </div>
         </div>
 
@@ -1018,8 +1026,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const hasLast = USER ? !!(PREFILL && PREFILL.saved) : !!store.get("dh_last");
     if (hasLast) {
       const box = document.createElement("div");
-      box.className = "card";
-      box.innerHTML = `<h2>🧠 جواب‌های یادم‌مانده</h2><p class="muted">${USER ? "جواب‌های دورهمی قبلی‌ات (به‌جز روزها) یادم مانده تا دفعهٔ بعد فقط روزها را بزنی." : "جواب‌هایت روی همین گوشی مانده تا دفعهٔ بعد سریع‌تر پر کنی."}</p><button class="btn line sm" id="dh_forget">فراموشش کن</button>`;
+      box.style.cssText = "text-align:center;padding:10px 4px;margin-top:12px;";
+      box.innerHTML = `
+        <div style="font-size:12.5px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;background:#f5f3fc;padding:6px 14px;border-radius:20px;border:1px solid #e7e2f5">
+          <span>🧠 تنظیماتت روی گوشی ذخیره است</span> · 
+          <button type="button" id="dh_forget" style="background:none;border:none;color:var(--p);cursor:pointer;font-weight:700;font-size:12px;padding:0;text-decoration:underline">پاک کردن حافظه</button>
+        </div>
+      `;
       app.appendChild(box);
       $("#dh_forget").onclick = async () => {
         if (!confirm("جواب‌های ذخیره‌شده پاک شود؟ جواب‌هایی که در دورهمی‌ها داده‌ای سر جایشان می‌مانند.")) return;
@@ -1068,11 +1081,14 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       $("#c_tgt_group")?.classList.toggle("on", tgt === "group");
       $("#c_tgt_pair")?.classList.toggle("on", tgt === "pair");
       const btnOpen = $("#c_go_open");
+      const btnFixed = $("#c_go");
       if (btnOpen) {
         if (!openSchedule) {
-          btnOpen.textContent = "📅 ساخت با روز و ساعت مشخص ✨";
+          btnOpen.textContent = tgt === "pair" ? "👯‍♀️ ثبت قرار دو‌نفره با این تاریخ‌ها ✨" : "📅 ساخت دورهمی با این تاریخ‌ها ✨";
+          if (btnFixed) btnFixed.textContent = "🙋‍♀️ زمان شناور";
         } else {
-          btnOpen.textContent = tgt === "pair" ? "👯‍♀️ ایجاد قرار همراهی و گرفتن لینک اشتراک ✨" : "🚀 ساخت دورهمی باز و گرفتن کد و لینک ✨";
+          btnOpen.textContent = tgt === "pair" ? "👯‍♀️ ساخت قرار همراهی و دریافت لینک ✨" : "🚀 ساخت قرار و دریافت لینک اشتراک ✨";
+          if (btnFixed) btnFixed.textContent = "📅 با روز و ساعت مشخص";
         }
       }
     };
