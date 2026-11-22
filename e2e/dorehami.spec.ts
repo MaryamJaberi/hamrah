@@ -108,7 +108,7 @@ test('open "بریم بیرون؟" meetup without preset dates + loading previou
   await page.locator('#f_name').fill('مهمان');
   await page.locator('#f_next').click();
   await page.locator('[data-k=rotterdam]').click();
-  await page.locator('[data-cancity=delft]').click();
+  await page.locator('#f_orig_rad').fill('60');
   await page.locator('#f_next').click();
   await page.locator('[data-mode=ov]').click();
   await page.locator('#f_next').click();

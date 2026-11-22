@@ -170,6 +170,29 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     AUX_MAPS.forEach(m => { try { m.remove(); } catch(e){} });
     AUX_MAPS = [];
   }
+  function renderRadiusSlider(dataObj, sliderId){
+    const curMin = Number(dataObj?.max_min) || 45;
+    const curKm = Math.round(curMin * 0.75);
+    return `
+      <div class="rad-ctrl">
+        <span class="tiny" style="white-space:nowrap">⭕ شعاع دایرهٔ حرکت:</span>
+        <input type="range" id="${sliderId}" min="10" max="120" step="5" value="${curMin}">
+        <span class="rad-val" id="${sliderId}_lbl">${fa(curMin)} دقیقه (~${fa(curKm)} کم)</span>
+      </div>`;
+  }
+  function wireRadiusSlider(sliderId, dataObj, mapId){
+    const sl = document.getElementById(sliderId);
+    const lbl = document.getElementById(sliderId + "_lbl");
+    if (!sl) return;
+    sl.oninput = () => {
+      const v = Number(sl.value) || 45;
+      dataObj.max_min = v;
+      const rKm = Math.round(v * 0.75);
+      if (lbl) lbl.textContent = `${fa(v)} دقیقه (~${fa(rKm)} کم)`;
+      const mEl = document.getElementById(mapId);
+      if (mEl && mEl._redrawMap) mEl._redrawMap();
+    };
+  }
   function mountZoneMap(elId, dataObj, opts = {}){
     getL().then(L => {
       const el = document.getElementById(elId);
@@ -185,7 +208,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           const orig = dataObj.origin && dataObj.origin.lat ? dataObj.origin : null;
           const maxMin = Number(dataObj.max_min) || 45;
           // ~0.75 km per minute of travel radius around origin
-          const radMeters = Math.max(8000, Math.min(75000, maxMin * 750));
+          const radMeters = Math.max(6000, Math.min(90000, maxMin * 750));
           if (orig) {
             L.circle([orig.lat, orig.lng], {
               radius: radMeters,
@@ -196,11 +219,16 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               dashArray: "6 4"
             }).addTo(layer).bindPopup(`محدودهٔ راحت حرکت از ${esc(orig.fa)} (حدود ${fa(maxMin)} دقیقه)`);
             pts.push([orig.lat, orig.lng]);
+            // include circle edges in bounds so zooming shows the circle nicely
+            const dLat = radMeters / 111000;
+            pts.push([orig.lat + dLat, orig.lng]);
+            pts.push([orig.lat - dLat, orig.lng]);
           }
           const canSet = new Set(Array.isArray(dataObj.can_cities) ? dataObj.can_cities : []);
           CITIES.filter(c => c.meet || (orig && orig.key === c.key)).forEach(c => {
             const isOrig = orig && orig.key === c.key;
             const isCan = canSet.has(c.key);
+            const inRad = orig ? (km(orig, c) * 1000 <= radMeters) : false;
             if (isCan && !isOrig) {
               L.circle([c.lat, c.lng], {
                 radius: 7500,
@@ -211,9 +239,9 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               }).addTo(layer);
               pts.push([c.lat, c.lng]);
             }
-            const color = isOrig ? "#6C5CE7" : isCan ? "#00B894" : "#9b95a8";
+            const color = isOrig ? "#6C5CE7" : (isCan || inRad) ? "#00B894" : "#9b95a8";
             const mk = L.circleMarker([c.lat, c.lng], {
-              radius: isOrig ? 9 : isCan ? 8 : 6,
+              radius: isOrig ? 9 : (isCan || inRad) ? 8 : 6,
               color: "#fff",
               fillColor: color,
               fillOpacity: 0.95,
@@ -224,7 +252,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               mk.on("click", () => { opts.onToggleCity(c); redraw(); });
             }
           });
-          if (pts.length > 1) m.fitBounds(pts, {padding:[28,28], maxZoom:10});
+          if (pts.length > 1) m.fitBounds(pts, {padding:[20,20], maxZoom:10});
           else if (pts.length === 1) m.setView(pts[0], 9);
           else m.setView([52.08, 4.55], 8);
         };
@@ -318,15 +346,261 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     try { await rpc("dh_claim", {p_items: items}); } catch(e){}
   }
   function topbar(){
-    return `<div class="topbar"><a href="${USER ? "/out" : "/login"}" data-ext="1">🌿 همراه</a>${USER
-      ? `<a href="/out" data-ext="1">بریم بیرون ←</a>`
-      : `<a href="/login" data-ext="1" data-login="1">ورود / ساخت حساب</a>`}</div>`;
+    const cached = store.get("dh_last");
+    const myName = USER?.name || cached?.name || "";
+    const myEmail = cached?.email || cached?.data?.email || "";
+    return `<div class="topbar">
+      <a href="/d" style="display:flex;align-items:center;gap:6px">🌿 <b>دورهمی همراه</b></a>
+      <div class="row" style="gap:8px">
+        <button type="button" class="btn ghost sm" id="tb_prof_btn" style="padding:5px 11px;font-size:12.5px">
+          ${myName ? `👤 پروفایل ${esc(myName)}${myEmail?" ✓":""}` : `👤 پروفایل من / اتصال جیمیل`}
+        </button>
+        ${USER ? `<a href="/out" data-ext="1" style="font-size:12.5px">بریم بیرون ←</a>` : ""}
+      </div>
+    </div>`;
   }
+  function wireWeekGrid(container, getArr, setArr, attrName) {
+    const refreshCells = () => {
+      const cur = new Set(getArr());
+      container.querySelectorAll(`[data-${attrName}]`).forEach(td => {
+        const on = cur.has(td.dataset[attrName]);
+        td.classList.toggle("on", on);
+        td.textContent = on ? "✓" : "·";
+      });
+    };
+    container.querySelectorAll(`[data-${attrName}]`).forEach(el => el.onclick = () => {
+      const k = el.dataset[attrName];
+      const arr = getArr();
+      setArr(arr.includes(k) ? arr.filter(x => x !== k) : [...arr, k]);
+      refreshCells();
+    });
+    container.querySelectorAll(`[data-qfill-${attrName}]`).forEach(btn => btn.onclick = () => {
+      const mode = btn.getAttribute(`data-qfill-${attrName}`);
+      if (mode === "clear") setArr([]);
+      else if (mode === "wknd") {
+        const s = new Set(getArr());
+        ["sat:afternoon","sat:evening","sun:afternoon","sun:evening"].forEach(k => s.add(k));
+        setArr([...s]);
+      } else if (mode === "eve") {
+        const s = new Set(getArr());
+        WEEK_DAYS.forEach(([dk]) => s.add(`${dk}:evening`));
+        setArr([...s]);
+      }
+      refreshCells();
+    });
+  }
+
+  function openProfileModal(initialProf = null) {
+    let existing = document.getElementById("dh_prof_modal");
+    if (existing) existing.remove();
+    const cached = store.get("dh_last");
+    let p = initialProf;
+    if (!p && cached && cached.name) {
+      const found = KNOWN_PROFILES.find(x => x.name.toLowerCase() === cached.name.toLowerCase());
+      p = found ? { ...found, data: { ...found.data, ...(cached.data || {}) }, email: cached.email || found.email || found.data?.email } : { name: cached.name, email: cached.email || cached.data?.email, data: cached.data || {}, public_fields: cached.pub || [] };
+    }
+    if (!p && USER && USER.name) {
+      const found = KNOWN_PROFILES.find(x => x.name.toLowerCase() === USER.name.toLowerCase());
+      p = found || { name: USER.name, data: PREFILL?.data || {}, public_fields: [] };
+    }
+    const wrap = document.createElement("div");
+    wrap.id = "dh_prof_modal";
+    wrap.className = "drawer-backdrop";
+
+    const drawModal = () => {
+      const d = (p && p.data) ? p.data : {};
+      const emailVal = p?.email || d.email || "";
+      const ORDER = ["origin","can_cities","free_windows","free_note","modes","max_min","activities","budget","diet","hobbies","age","job","about","question"];
+      const tags = p ? ORDER.map(k => { const v = showVal(k, d[k]); return v ? `<span class="summary-tag"><b>${LABEL[k]}:</b>${esc(v)}</span>` : ""; }).filter(Boolean).join("") : "";
+      const shareUrl = p ? `${location.origin}/d?u=${encodeURIComponent(p.name)}` : "";
+      const shareTxt = p ? `پروفایل و ساعت‌های آزاد ${p.name} در دورهمی همراه 🌿:\n${shareUrl}` : "";
+
+      wrap.innerHTML = `
+        <div class="drawer">
+          <div class="row" style="justify-content:space-between;margin-bottom:10px">
+            <b style="font-size:17px">👤 پروفایل شخصی من</b>
+            <button type="button" class="btn line sm" id="pm_close">✕ بستن</button>
+          </div>
+
+          <div style="background:#f7f5ff;border:1.5px solid #e2dcf7;border-radius:14px;padding:11px;margin-bottom:12px">
+            <b style="font-size:13px;display:block;margin-bottom:6px">📧 اتصال به جیمیل / ایمیل (برای دائمی شدن پروفایل در همهٔ گوشی‌ها):</b>
+            <div class="row" style="gap:6px;flex-wrap:wrap">
+              <input type="email" id="pm_email" class="ltr" style="flex:1.4;min-width:170px" placeholder="you@gmail.com" value="${esc(emailVal)}">
+              <input type="text" id="pm_name" style="flex:1;min-width:110px" placeholder="نام تو (مثلاً مریم)" value="${esc(p?.name || "")}">
+              <button type="button" class="btn sm" id="pm_load_btn">بارگذاری / اتصال</button>
+            </div>
+            ${KNOWN_PROFILES.length ? `
+              <details style="margin-top:8px">
+                <summary class="tiny" style="cursor:pointer;color:var(--p);font-weight:700">یا انتخاب سریع از پروفایل‌های قبلی (${KNOWN_PROFILES.map(x=>esc(x.name)).join("، ")})</summary>
+                <div class="prof-grid" style="margin-top:6px">
+                  ${KNOWN_PROFILES.map(kp => `
+                    <div class="prof-btn ${(p && p.name===kp.name)?"on":""}" data-pmpick="${esc(kp.name)}">
+                      <div class="av-sm" style="background:${colorOf(kp.name)}">${esc(kp.name.slice(0,1))}</div>
+                      <div class="nm">${esc(kp.name)}</div>
+                    </div>`).join("")}
+                </div>
+              </details>` : ""}
+          </div>
+
+          ${p ? `
+            <div class="row" style="justify-content:space-between;margin-bottom:8px">
+              <div class="row" style="gap:8px">
+                <div class="av-sm" style="background:${colorOf(p.name)};width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800">${esc(p.name.slice(0,1))}</div>
+                <div>
+                  <b style="font-size:16px;display:block">${esc(p.name)}</b>
+                  <small class="muted">${emailVal ? `📧 متصل به ${esc(emailVal)}` : "ذخیره در کش مرورگر"}</small>
+                </div>
+              </div>
+              <button type="button" class="btn line sm" id="pm_logout">خروج از پروفایل</button>
+            </div>
+
+            ${tags ? `<div class="summary-tags">${tags}</div>` : ""}
+
+            <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #d8caec">
+              <b style="font-size:13.5px;display:block;margin-bottom:4px">📍 شهر مبدأ و شعاع دایرهٔ حرکت من روی نقشه:</b>
+              <div class="row" style="gap:6px;margin-bottom:6px">
+                <select id="pm_origin_sel" style="flex:1">
+                  <option value="">انتخاب شهر مبدأ…</option>
+                  ${CITIES.map(c => `<option value="${c.key}" ${(d.origin && d.origin.key===c.key)?"selected":""}>${esc(c.fa)} (${esc(c.nl)})</option>`).join("")}
+                </select>
+              </div>
+              ${renderRadiusSlider(d, "pm_rad")}
+              <div id="hp_map" class="map-box"></div>
+              <div class="map-legend">
+                <span><i class="map-dot" style="background:#6C5CE7"></i>مبدأ و دایرهٔ حرکت من</span>
+                <span><i class="map-dot" style="background:#00B894"></i>نقاط داخل محدوده / انتخاب‌شده (روی نقاط نقشه بزن)</span>
+              </div>
+
+              <b style="font-size:13.5px;display:block;margin:12px 0 4px">🗓️ جدول ساعت‌ها و روزهای آزاد هفتگی من:</b>
+              <div id="hp_wins">
+                ${renderWeekGrid(d.free_windows || [], "hpwin")}
+              </div>
+
+              <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:6px">
+                <button class="btn grow" id="hp_save">💾 ذخیرهٔ دائمی پروفایل من</button>
+                <button class="btn ghost sm" id="hp_share">🔗 اشتراک‌گذاری</button>
+                <a class="btn line sm" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(shareTxt)}">واتس‌اپ</a>
+              </div>
+            </div>
+          ` : `<p class="muted center" style="padding:12px 0">نام یا جیمیلت را بالا وارد کن تا پروفایل شخصی‌ات ساخته یا بازیابی شود.</p>`}
+        </div>`;
+
+      wrap.querySelector("#pm_close").onclick = () => { clearAuxMaps(); wrap.remove(); };
+      wrap.onclick = (ev) => { if (ev.target === wrap) { clearAuxMaps(); wrap.remove(); } };
+
+      wrap.querySelectorAll("[data-pmpick]").forEach(el => el.onclick = () => {
+        const kp = KNOWN_PROFILES.find(x => x.name === el.dataset.pmpick);
+        if (kp) {
+          p = JSON.parse(JSON.stringify(kp));
+          store.set("dh_last", { name: p.name, email: p.email || p.data?.email || "", data: p.data || {}, pub: p.public_fields || [], saved: true });
+          if ($("#c_org") && !$("#c_org").value) $("#c_org").value = p.name;
+          drawModal();
+          const tb = $("#tb_prof_btn"); if (tb) tb.textContent = `👤 پروفایل ${p.name}`;
+        }
+      });
+
+      wrap.querySelector("#pm_load_btn").onclick = async () => {
+        const em = wrap.querySelector("#pm_email").value.trim().toLowerCase();
+        const nm = wrap.querySelector("#pm_name").value.trim();
+        if (!em && !nm) return toast("نام یا جیمیلت را وارد کن");
+        let found = null;
+        if (em) {
+          found = KNOWN_PROFILES.find(x => (x.email || x.data?.email || "").toLowerCase() === em);
+          if (!found) {
+            try {
+              const r = await fetch(`/api/d/profiles?email=${encodeURIComponent(em)}`);
+              if (r.ok) { const j = await r.json(); if (j.profile) found = j.profile; }
+            } catch(e){}
+          }
+        }
+        if (!found && nm) {
+          found = KNOWN_PROFILES.find(x => x.name.toLowerCase() === nm.toLowerCase());
+        }
+        if (found) {
+          p = JSON.parse(JSON.stringify(found));
+          p.data = p.data || {};
+          if (em) { p.email = em; p.data.email = em; }
+          if (nm) p.name = nm;
+        } else {
+          p = { name: nm || em.split("@")[0], email: em, data: { email: em, free_windows: [], can_cities: [], max_min: 45 }, public_fields: ["origin","can_cities","free_windows","activities","hobbies","email"] };
+          KNOWN_PROFILES.push(p);
+        }
+        store.set("dh_last", { name: p.name, email: p.email || "", data: p.data || {}, pub: p.public_fields || [], saved: true });
+        if ($("#c_org")) $("#c_org").value = p.name;
+        const tb = $("#tb_prof_btn"); if (tb) tb.textContent = `👤 پروفایل ${p.name}${p.email?" ✓":""}`;
+        drawModal();
+        toast(`پروفایل ${p.name} فعال شد ✓`);
+      };
+
+      if (p) {
+        p.data = p.data || {};
+        const origSel = wrap.querySelector("#pm_origin_sel");
+        if (origSel) origSel.onchange = () => {
+          const c = cityByKey(origSel.value);
+          if (c) {
+            p.data.origin = { key: c.key, fa: c.fa, lat: c.lat, lng: c.lng };
+            const mEl = document.getElementById("hp_map");
+            if (mEl && mEl._redrawMap) mEl._redrawMap();
+          }
+        };
+        wireWeekGrid(wrap, () => p.data.free_windows || [], (v) => { p.data.free_windows = v; }, "hpwin");
+        clearAuxMaps();
+        const toggleHpCity = (k) => {
+          const arr = p.data.can_cities || [];
+          p.data.can_cities = arr.includes(k) ? arr.filter(x => x !== k) : [...arr, k];
+          const mapEl = document.getElementById("hp_map");
+          if (mapEl && mapEl._redrawMap) mapEl._redrawMap();
+        };
+        mountZoneMap("hp_map", p.data, { onToggleCity: (c) => toggleHpCity(c.key) });
+        wireRadiusSlider("pm_rad", p.data, "hp_map");
+
+        const lo = wrap.querySelector("#pm_logout");
+        if (lo) lo.onclick = () => {
+          try { localStorage.removeItem("dh_last"); } catch(e){}
+          p = null;
+          const tb = $("#tb_prof_btn"); if (tb) tb.textContent = `👤 پروفایل من / اتصال جیمیل`;
+          drawModal();
+        };
+
+        const saveBtn = wrap.querySelector("#hp_save");
+        if (saveBtn) saveBtn.onclick = async () => {
+          const em = wrap.querySelector("#pm_email").value.trim().toLowerCase();
+          const nm = wrap.querySelector("#pm_name").value.trim() || p.name;
+          p.name = nm;
+          if (em) { p.email = em; p.data.email = em; }
+          saveBtn.disabled = true;
+          try {
+            await fetch("/api/d/profiles", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: p.name, email: p.email || null, data: p.data, public_fields: p.public_fields || ["origin","can_cities","free_windows","activities","hobbies","email"] })
+            });
+            store.set("dh_last", { name: p.name, email: p.email || "", data: p.data || {}, pub: p.public_fields || [], saved: true });
+            const tb = $("#tb_prof_btn"); if (tb) tb.textContent = `👤 پروفایل ${p.name}${p.email?" ✓":""}`;
+            if ($("#c_org") && !$("#c_org").value) $("#c_org").value = p.name;
+            toast("پروفایل و محدودهٔ حرکتت ذخیره شد ✓");
+          } catch(e) { toast("ذخیره نشد"); }
+          saveBtn.disabled = false;
+        };
+        const shareBtn = wrap.querySelector("#hp_share");
+        if (shareBtn) shareBtn.onclick = async () => {
+          try { await navigator.clipboard.writeText(shareTxt); toast("لینک پروفایل کپی شد ✓"); }
+          catch(e) { toast(shareUrl); }
+        };
+      }
+    };
+
+    root.appendChild(wrap);
+    drawModal();
+  }
+
   // remember where to come back after login (middleware reads hamrah_next)
   function bindLoginLinks(){
     root.querySelectorAll("[data-login]").forEach(a => a.addEventListener("click", () => {
       document.cookie = `hamrah_next=${location.pathname}; path=/; max-age=3600; samesite=lax`;
     }));
+    const tbBtn = $("#tb_prof_btn");
+    if (tbBtn) tbBtn.onclick = () => openProfileModal();
   }
   function memberCard(){
     if (USER) {
@@ -361,258 +635,150 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       try {
         const server = await rpc("dh_my_meetups", {}) || [];
         const seen = new Set(server.map(x => x.code));
-        mine = [...server.map(x => ({code:x.code, title:x.title, admin:x.is_admin ? "account" : null, final:x.final, count:x.count})),
+        mine = [...server.map(x => ({code:x.code, title:x.title, organizer_name:x.organizer_name, admin:x.is_admin ? "account" : null, final:x.final, count:x.count})),
                 ...mine.filter(x => !seen.has(x.code))];
       } catch(e){}
     }
     for (const rm of RECENT_MEETUPS) {
-      if (!mine.some(x => x.code === rm.code)) mine.push({code: rm.code, title: rm.title, final: rm.final});
+      const ex = mine.find(x => x.code === rm.code);
+      if (!ex) mine.push({code: rm.code, title: rm.title, organizer_name: rm.organizer_name, count: rm.count, final: rm.final});
+      else {
+        if (!ex.organizer_name && rm.organizer_name) ex.organizer_name = rm.organizer_name;
+        if (ex.count == null && rm.count != null) ex.count = rm.count;
+      }
     }
     if (dead) return;
 
+    const cached = store.get("dh_last");
+    const myName = USER?.name || cached?.name || "";
+    const myEmail = cached?.email || cached?.data?.email || "";
     const sharedProf = sharedUser ? KNOWN_PROFILES.find(p => p.name.toLowerCase() === sharedUser.trim().toLowerCase()) : null;
-    const renderProfileSummary = (p) => {
-      const d = p.data || {};
-      const ORDER = ["origin","can_cities","free_windows","free_note","modes","max_min","activities","budget","diet","hobbies","age","job","about","question"];
-      const tags = ORDER.map(k => { const v = showVal(k, d[k]); return v ? `<span class="summary-tag"><b>${LABEL[k]}:</b>${esc(v)}</span>` : ""; }).filter(Boolean).join("");
-      const shareUrl = `${location.origin}/d?u=${encodeURIComponent(p.name)}`;
-      const shareTxt = `پروفایل و ساعت‌های آزاد ${p.name} در دورهمی همراه 🌿:\n${shareUrl}`;
-      return `
-        <div style="background:#f9f8ff;border:1.5px solid #dfd8f7;border-radius:16px;padding:14px;margin-top:10px">
-          <div class="row" style="justify-content:space-between;margin-bottom:8px">
-            <div class="row" style="gap:8px">
-              <div class="av-sm" style="background:${colorOf(p.name)};width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800">${esc(p.name.slice(0,1))}</div>
-              <div>
-                <b style="font-size:16px;display:block">پروفایل ${esc(p.name)}</b>
-                <small class="muted">${d.origin?.fa ? `📍 ${esc(d.origin.fa)}` : "اطلاعات ذخیره‌شده"}</small>
-              </div>
-            </div>
-            <span class="pill g">آماده ✓</span>
-          </div>
-          ${tags ? `<div class="summary-tags">${tags}</div>` : '<p class="tiny">هنوز جزئیاتی ثبت نشده.</p>'}
-          ${(p.meetups && p.meetups.length) ? `<div style="margin-top:8px"><b class="tiny">دورهمی‌های قبلی:</b> <div class="chips" style="margin-top:4px">${p.meetups.map(m => `<a class="chip on" href="/d/${esc(m.code)}">🌿 ${esc(m.title)}</a>`).join("")}</div></div>` : ""}
-          <div style="margin-top:12px;padding-top:12px;border-top:1px dashed #d8caec">
-            <b style="font-size:13.5px;display:block;margin-bottom:4px">🗓️ جدول ساعت‌ها و روزهای آزاد هفتگی ${esc(p.name)}:</b>
-            <p class="tiny" style="margin:0 0 6px">روی هر خانه بزن تا ساعت‌های آزادت روشن/خاموش شود:</p>
-            <div id="hp_wins">
-              ${renderWeekGrid(d.free_windows || [], "hpwin")}
-            </div>
-            <label class="f" style="margin-top:10px">📍 محدودهٔ حرکت و لوکیشن‌هایی که می‌توانم بیایم (روی نقشه یا دکمه‌ها بزن):</label>
-            <div id="hp_map" class="map-box"></div>
-            <div class="map-legend">
-              <span><i class="map-dot" style="background:#6C5CE7"></i>مبدأ و شعاع حرکت من</span>
-              <span><i class="map-dot" style="background:#00B894"></i>شهرهایی که می‌توانم بیایم</span>
-              <span><i class="map-dot" style="background:#9b95a8"></i>سایر شهرها (بزن تا اضافه شود)</span>
-            </div>
-            <div class="chips" id="hp_cities" style="margin-top:8px">
-              ${CITIES.filter(c=>c.meet).map(c => {
-                const on = (d.can_cities||[]).includes(c.key) || (d.origin && d.origin.key === c.key);
-                return `<span class="chip ${on?"on":""}" data-hpcity="${c.key}">${esc(c.fa)}</span>`;
-              }).join("")}
-            </div>
-            <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:6px">
-              <button class="btn sm" id="hp_save">💾 ذخیرهٔ ساعت‌ها و لوکیشن‌ها</button>
-              <button class="btn ghost sm" id="hp_share">🔗 کپی لینک پروفایلم</button>
-              <a class="btn line sm" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(shareTxt)}">واتس‌اپ</a>
-              <a class="btn line sm" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTxt.split("\n")[0])}">تلگرام</a>
-            </div>
-          </div>
-        </div>`;
-    };
 
     app.innerHTML = topbar() + `
-      <header class="top"><span class="logo">🌿</span><div><b>دورهمی</b><small>هماهنگی راحتِ زمان و مکان با دوستان</small></div></header>
-
-      <div class="card" id="prof_card">
-        <div class="row" style="justify-content:space-between">
-          <h2 style="margin:0">👤 کی هستی؟ (پروفایل و ساعت آزاد)</h2>
-          <span class="pill">ذخیره و اشتراک‌گذاری</span>
-        </div>
-        <p class="muted" style="margin-top:4px">روی اسمت بزن تا اطلاعاتت (از دیدار نخست) و جدول ساعت‌های آزادت باز شود:</p>
-        <div class="prof-grid" id="known_chips">
-          ${KNOWN_PROFILES.map(p => `
-            <div class="prof-btn ${(sharedProf && sharedProf.name===p.name)?"on":""}" data-kprof="${esc(p.name)}">
-              <div class="av-sm" style="background:${colorOf(p.name)}">${esc(p.name.slice(0,1))}</div>
-              <div style="min-width:0">
-                <div class="nm">${esc(p.name)}</div>
-                <div class="tiny" style="font-size:11px">${esc(p.data?.origin?.fa || "پروفایل آماده")}</div>
-              </div>
-            </div>`).join("")}
-          <div class="prof-btn" id="new_prof_btn" style="border-style:dashed;justify-content:center;color:var(--p)">
-            <b>+ نفر جدید</b>
-          </div>
-        </div>
-        <div id="prof_new_box" style="display:none;margin-top:8px">
-          <div class="row"><input type="text" id="np_name" maxlength="40" placeholder="اسمت را بنویس (مثلاً سارا)"><button class="btn sm" id="np_go">ساخت پروفایل</button></div>
-        </div>
-        <div id="prof_detail_box"></div>
-      </div>
-
       <div class="card">
-        <h1>✨ یک دورهمی بساز، لینکش را در گروه بفرست</h1>
-        <p class="muted" style="margin-bottom:10px">می‌توانی بدون تعیین تاریخ از اول فقط بگویی <b>«بریم بیرون؟»</b> تا هر کس ساعت و لوکیشن خودش را بزند، یا چند تاریخ مشخص پیشنهاد بدهی:</p>
+        <h1>✨ یک دورهمی بساز یا با کد وارد شو</h1>
+        <p class="muted" style="margin-bottom:10px">کد دورهمی را وارد کن تا ترجیحاتت را ثبت کنی، یا یک دورهمی تازه بساز و کدش را برای دوستانت بفرست:</p>
 
         <div class="seg">
-          <button type="button" id="seg_open" class="on">🙋‍♀️ باز («بریم بیرون؟» — هر کس بگوید کِی و کجا)</button>
-          <button type="button" id="seg_fixed">📅 با تاریخ‌های مشخص</button>
+          <button type="button" id="mode_create_tab" class="on">✨ یک دورهمی بساز</button>
+          <button type="button" id="mode_join_tab">🔑 ورود با کد دورهمی</button>
         </div>
 
-        <div class="row" style="gap:8px;flex-wrap:wrap">
-          <div style="flex:1.4;min-width:180px">
-            <label class="f" style="margin-top:2px">عنوان دورهمی</label>
-            <input type="text" id="c_title" maxlength="80" placeholder="مثلاً: بریم بیرون؟ ✨ یا کافهٔ آخر هفته">
+        <div id="join_pane" style="display:none;background:#f8f6ff;border:1.5px solid #e1daf7;border-radius:16px;padding:14px;margin-bottom:10px">
+          <label class="f" style="margin-top:0">🔑 کد یا لینک دورهمی را وارد کن:</label>
+          <div class="row" style="gap:8px;margin-top:6px">
+            <input type="text" id="join_code_inp" class="code-inp" placeholder="مثلاً: 096be90f6c" style="flex:1">
+            <button type="button" class="btn" id="join_code_go">ورود به دورهمی ←</button>
           </div>
-          <div style="flex:1;min-width:130px">
-            <label class="f" style="margin-top:2px">اسم تو (برگزارکننده)</label>
-            <input type="text" id="c_org" maxlength="40" placeholder="مثلاً مریم">
+          <p class="tiny" style="margin-top:6px">با زدن کد، مستقیم وارد صفحهٔ همان دورهمی می‌شوی تا ساعت‌ها و محدودهٔ مکانت را بگویی.</p>
+        </div>
+
+        <div id="create_pane">
+          <div class="row" style="gap:8px;flex-wrap:wrap">
+            <div style="flex:1;min-width:140px">
+              <label class="f" style="margin-top:2px">اسم تو (سازندهٔ دورهمی)</label>
+              <input type="text" id="c_org" maxlength="40" placeholder="مثلاً مریم" value="${esc(myName)}">
+            </div>
+            <div style="flex:1.3;min-width:170px">
+              <label class="f" style="margin-top:2px">عنوان (اختیاری — اجباری نیست)</label>
+              <input type="text" id="c_title" maxlength="80" placeholder="خالی بگذاری: دورهمیِ تو ✨">
+            </div>
+          </div>
+
+          <div class="seg" style="margin-top:10px;margin-bottom:8px">
+            <button type="button" id="seg_open" class="on">🙋‍♀️ بدون تاریخ و مکان از پیش تعیین‌شده</button>
+            <button type="button" id="seg_fixed">📅 با تاریخ‌های پیشنهادی</button>
+          </div>
+
+          <div id="c_open_note" class="okbox" style="margin-top:6px">
+            ✨ <b>حالت باز («بریم بیرون؟»):</b> تاریخ، ساعت و مکان از اول تعیین نمی‌شود؛ کد و لینک اشتراک‌گذاری بهت می‌دهد و هر کس وارد شود می‌گوید کِی و تا چه شعاعی روی نقشه می‌تواند بیاید.
+          </div>
+
+          <div id="c_fixed_box" style="display:none;margin-top:8px;padding:10px;background:#f8f7fc;border-radius:12px">
+            <b style="font-size:13.5px;display:block;margin-bottom:6px">📅 روزهای پیشنهادی:</b>
+            <div id="c_opts"></div>
+            <button class="btn ghost sm" id="c_add" style="margin-top:6px">+ یک روز دیگر</button>
+          </div>
+
+          <details style="margin-top:8px">
+            <summary class="tiny" style="cursor:pointer;color:var(--p);font-weight:700">⚙️ توضیح اختیاری یا فقط خانم‌ها…</summary>
+            <div style="margin-top:8px">
+              <label class="f">توضیح کوتاه (اختیاری)</label>
+              <textarea id="c_note" maxlength="500" placeholder="مثلاً: بیایید بگید چه روزها و ساعت‌هایی و کجاها می‌تونید بیاید 🌿"></textarea>
+              <div class="opt" id="c_wo" style="margin-top:8px"><span class="e">👩</span><div><b>این دورهمی فقط برای خانم‌هاست</b><span>روی صفحهٔ دعوت نوشته می‌شود</span></div></div>
+            </div>
+          </details>
+
+          <div id="c_err"></div>
+          <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:12px">
+            <button class="btn grow" id="c_go_open">🙋‍♀️ ساخت دورهمی باز و گرفتن کد و لینک ✨</button>
+            <button class="btn ghost" id="c_go">📅 ساخت با تاریخ</button>
           </div>
         </div>
+      </div>
 
-        <div id="c_open_note" class="okbox" style="margin-top:10px">
-          ✨ <b>حالت باز فعال است:</b> لازم نیست روز و ساعت تعیین کنی! هر کس لینک را باز کند می‌گوید چه روزها، چه ساعت‌هایی و کدام لوکیشن‌ها می‌تواند بیاید و اپ بهترین زمان و شهر را پیشنهاد می‌دهد.
-        </div>
-
-        <div id="c_fixed_box" style="display:none;margin-top:10px;padding:10px;background:#f8f7fc;border-radius:12px">
-          <b style="font-size:13.5px;display:block;margin-bottom:6px">📅 روزهای پیشنهادی (بچه‌ها علاوه بر این‌ها ساعت آزادشان را هم می‌زنند):</b>
-          <div id="c_opts"></div>
-          <button class="btn ghost sm" id="c_add" style="margin-top:6px">+ یک روز دیگر</button>
-        </div>
-
-        <details style="margin-top:10px">
-          <summary class="tiny" style="cursor:pointer;color:var(--p);font-weight:700">⚙️ توضیح اختیاری یا فقط خانم‌ها…</summary>
-          <div style="margin-top:8px">
-            <label class="f">توضیح کوتاه (اختیاری)</label>
-            <textarea id="c_note" maxlength="500" placeholder="مثلاً: بیایید بگید چه روزها و ساعت‌هایی و کجاها می‌تونید بیاید 🌿"></textarea>
-            <div class="opt" id="c_wo" style="margin-top:8px"><span class="e">👩</span><div><b>این دورهمی فقط برای خانم‌هاست</b><span>روی صفحهٔ دعوت نوشته می‌شود</span></div></div>
+      <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+        <div class="row" style="gap:10px">
+          <div class="av-sm" style="background:${colorOf(myName||"من")};width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800">${esc((myName||"؟").slice(0,1))}</div>
+          <div>
+            <b style="font-size:15px;display:block">${myName ? `پروفایل من: ${esc(myName)}` : "پروفایل شخصی و ساعت‌های آزاد من"}</b>
+            <span class="tiny">${myEmail ? `📧 متصل به ${esc(myEmail)} · ذخیره در کش` : myName ? "ذخیره در کش این مرورگر · برای دائمی شدن به جیمیل وصل کن" : "ساعت آزاد و محدودهٔ حرکتت را یک بار تنظیم کن و به جیمیلت وصل کن"}</span>
           </div>
-        </details>
-
-        <div id="c_err"></div>
-        <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:12px">
-          <button class="btn grow" id="c_go_open">🙋‍♀️ ساخت «بریم بیرون؟» (بدون وقت از پیش تعیین‌شده)</button>
-          <button class="btn ghost" id="c_go">📅 ساخت با تاریخ‌های بالا</button>
         </div>
+        <button type="button" class="btn ghost sm" id="open_my_prof_btn">${myName ? "✏️ پروفایل و نقشهٔ من" : "📧 ساخت / اتصال به جیمیل"}</button>
       </div>
 
       ${mine.length ? `
         <div class="card">
-          <h2>🌿 دورهمی‌های فعال</h2>
-          ${mine.map(m=>`
+          <h2>🌿 دورهمی‌های موجود</h2>
+          ${mine.map(m => {
+            const org = m.organizer_name ? `سازنده: ${m.organizer_name}` : "دورهمی گروهی";
+            const cnt = m.count != null ? `${fa(m.count)} نفر شرکت کرده‌اند` : "مشاهده و ثبت ترجیحات";
+            return `
             <a class="meetup-item" href="/d/${esc(m.code)}${m.admin && m.admin !== "account"?`?admin=${esc(m.admin)}`:""}">
               <div>
-                <b style="font-size:15px">${esc(m.title)}</b>
-                <div class="tiny">مشاهدهٔ جواب‌های بچه‌ها، زمان و لوکیشن پیشنهادی ←</div>
+                <div class="row" style="gap:6px;margin-bottom:2px">
+                  <b style="font-size:15.5px">${esc(m.title || (m.organizer_name ? "دورهمی " + m.organizer_name : "دورهمی"))}</b>
+                  <code class="tiny" style="background:#eeeaf8;padding:1px 6px;border-radius:6px;color:var(--p)">#${esc(m.code)}</code>
+                </div>
+                <div class="tiny">👤 ${esc(org)} · 👥 ${cnt}</div>
               </div>
               <div class="row" style="gap:4px">
                 ${m.final?'<span class="pill g">قطعی</span>':""}
-                ${m.admin?'<span class="pill">برگزارکننده</span>':'<span class="pill">مشاهده</span>'}
+                ${m.admin?'<span class="pill">سازنده</span>':'<span class="pill">ورود ←</span>'}
               </div>
-            </a>`).join("")}
+            </a>`;
+          }).join("")}
         </div>` : ""}
     `;
     bindLoginLinks();
-    if (USER) $("#c_org").value = USER.name || "";
+    if ($("#open_my_prof_btn")) $("#open_my_prof_btn").onclick = () => openProfileModal();
+    if (sharedProf) openProfileModal(sharedProf);
 
-    function wireWeekGrid(container, getArr, setArr, attrName) {
-      const refreshCells = () => {
-        const cur = new Set(getArr());
-        container.querySelectorAll(`[data-${attrName}]`).forEach(td => {
-          const on = cur.has(td.dataset[attrName]);
-          td.classList.toggle("on", on);
-          td.textContent = on ? "✓" : "·";
-        });
+    const tabCreate = $("#mode_create_tab");
+    const tabJoin = $("#mode_join_tab");
+    if (tabCreate && tabJoin) {
+      tabCreate.onclick = () => {
+        tabCreate.classList.add("on"); tabJoin.classList.remove("on");
+        $("#join_pane").style.display = "none";
       };
-      container.querySelectorAll(`[data-${attrName}]`).forEach(el => el.onclick = () => {
-        const k = el.dataset[attrName];
-        const arr = getArr();
-        setArr(arr.includes(k) ? arr.filter(x => x !== k) : [...arr, k]);
-        refreshCells();
-      });
-      container.querySelectorAll(`[data-qfill-${attrName}]`).forEach(btn => btn.onclick = () => {
-        const mode = btn.getAttribute(`data-qfill-${attrName}`);
-        if (mode === "clear") setArr([]);
-        else if (mode === "wknd") {
-          const s = new Set(getArr());
-          ["sat:afternoon","sat:evening","sun:afternoon","sun:evening"].forEach(k => s.add(k));
-          setArr([...s]);
-        } else if (mode === "eve") {
-          const s = new Set(getArr());
-          WEEK_DAYS.forEach(([dk]) => s.add(`${dk}:evening`));
-          setArr([...s]);
-        }
-        refreshCells();
-      });
-    }
-
-    let activeProf = sharedProf || null;
-    function bindProfileDetail(p) {
-      activeProf = p;
-      const box = $("#prof_detail_box");
-      if (!box || !p) return;
-      box.innerHTML = renderProfileSummary(p);
-      store.set("dh_last", { name: p.name, data: p.data || {}, pub: p.public_fields || [], saved: true });
-      if (!$("#c_org").value) $("#c_org").value = p.name;
-
-      p.data = p.data || {};
-      wireWeekGrid(box, () => p.data.free_windows || [], (v) => { p.data.free_windows = v; }, "hpwin");
-
-      clearAuxMaps();
-      const toggleHpCity = (k) => {
-        const arr = p.data.can_cities || (p.data.origin?.key ? [p.data.origin.key] : []);
-        p.data.can_cities = arr.includes(k) ? arr.filter(x => x !== k) : [...arr, k];
-        box.querySelectorAll("[data-hpcity]").forEach(el => {
-          const ck = el.dataset.hpcity;
-          el.classList.toggle("on", (p.data.can_cities || []).includes(ck) || (p.data.origin && p.data.origin.key === ck));
-        });
-        const mapEl = document.getElementById("hp_map");
-        if (mapEl && mapEl._redrawMap) mapEl._redrawMap();
-      };
-      box.querySelectorAll("[data-hpcity]").forEach(el => el.onclick = () => toggleHpCity(el.dataset.hpcity));
-      mountZoneMap("hp_map", p.data, { onToggleCity: (c) => toggleHpCity(c.key) });
-      const saveBtn = $("#hp_save");
-      if (saveBtn) saveBtn.onclick = async () => {
-        saveBtn.disabled = true;
-        try {
-          await fetch("/api/d/profiles", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: p.name, data: p.data, public_fields: p.public_fields || ["origin","can_cities","free_windows","activities","hobbies"] })
-          });
-          store.set("dh_last", { name: p.name, data: p.data || {}, pub: p.public_fields || [], saved: true });
-          toast("ساعت‌های آزاد و پروفایلت ذخیره شد ✓");
-        } catch(e) { toast("ذخیره نشد"); }
-        saveBtn.disabled = false;
-      };
-      const shareBtn = $("#hp_share");
-      if (shareBtn) shareBtn.onclick = async () => {
-        const url = `${location.origin}/d?u=${encodeURIComponent(p.name)}`;
-        const txt = `پروفایل و ساعت‌های آزاد ${p.name} برای بیرون رفتن 🌿:\n${url}`;
-        try { await navigator.clipboard.writeText(txt); toast("لینک پروفایل و ساعت‌های آزادت کپی شد ✓"); }
-        catch(e) { toast(url); }
+      tabJoin.onclick = () => {
+        tabJoin.classList.add("on"); tabCreate.classList.remove("on");
+        $("#join_pane").style.display = "block";
+        $("#join_code_inp")?.focus();
       };
     }
-
-    if (sharedProf) bindProfileDetail(sharedProf);
-    root.querySelectorAll("[data-kprof]").forEach(el => el.onclick = () => {
-      const name = el.dataset.kprof;
-      const p = KNOWN_PROFILES.find(x => x.name === name);
-      root.querySelectorAll("[data-kprof]").forEach(c => c.classList.toggle("on", c === el));
-      if (p) bindProfileDetail(p);
-    });
-    const newBtn = $("#new_prof_btn");
-    if (newBtn) newBtn.onclick = () => {
-      $("#prof_new_box").style.display = "block";
-      $("#np_name")?.focus();
+    const goJoinCode = () => {
+      let raw = ($("#join_code_inp")?.value || "").trim();
+      if (!raw) return toast("کد دورهمی را بنویس");
+      // If user pasted a full URL like https://.../d/096be90f6c, extract the code
+      const m = raw.match(/\/d\/([a-zA-Z0-9_-]+)/);
+      const code = (m ? m[1] : raw.replace(/^#/, "")).trim().toLowerCase();
+      if (!code) return toast("کد معتبر نیست");
+      go(`/d/${code}`);
     };
-    const npGo = $("#np_go");
-    if (npGo) npGo.onclick = () => {
-      const nm = $("#np_name").value.trim();
-      if (!nm) return;
-      let p = KNOWN_PROFILES.find(x => x.name.toLowerCase() === nm.toLowerCase());
-      if (!p) { p = { name: nm, data: { free_windows: [], can_cities: [] }, public_fields: ["origin","can_cities","free_windows","activities","hobbies"], meetups: [] }; KNOWN_PROFILES.push(p); }
-      $("#prof_new_box").style.display = "none";
-      bindProfileDetail(p);
-    };
+    if ($("#join_code_go")) $("#join_code_go").onclick = goJoinCode;
+    if ($("#join_code_inp")) $("#join_code_inp").onkeydown = (ev) => { if (ev.key === "Enter") goJoinCode(); };
 
     // remembered answers can be forgotten any time
     const hasLast = USER ? !!(PREFILL && PREFILL.saved) : !!store.get("dh_last");
@@ -662,15 +828,17 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     $("#c_wo").onclick = e => { wo = !wo; e.currentTarget.classList.toggle("on", wo); };
     async function createMeetup(forceOpen = false) {
       const isOpen = forceOpen || openSchedule;
-      const title = $("#c_title").value.trim() || (isOpen ? "بریم بیرون؟ ✨" : "دورهمی ✨");
+      const orgName = $("#c_org").value.trim();
+      const rawTitle = $("#c_title").value.trim();
+      const title = rawTitle || (orgName ? `دورهمی ${orgName} ✨` : (isOpen ? "بریم بیرون؟ ✨" : "دورهمی ✨"));
       const good = isOpen ? [] : opts.filter(o => o.d).slice(0,10);
       if (!isOpen && !good.length) { $("#c_err").innerHTML = `<div class="err">حداقل یک روز انتخاب کن (یا دکمهٔ «بریم بیرون؟ بدون تعیین وقت» را بزن).</div>`; return; }
       const b = forceOpen ? $("#c_go_open") : $("#c_go"); b.disabled = true; b.innerHTML = `<span class="spin"></span>`;
       try {
-        const r = await rpc("dh_create", {p_title:title, p_note:$("#c_note").value, p_organizer:$("#c_org").value, p_options:good, p_women_only:wo});
-        store.set("dh_"+r.code, {title, admin:r.admin_token});
+        const r = await rpc("dh_create", {p_title:title, p_note:$("#c_note").value, p_organizer:orgName, p_options:good, p_women_only:wo});
+        store.set("dh_"+r.code, {title, organizer_name: orgName, admin:r.admin_token});
         go(`/d/${r.code}?admin=${r.admin_token}&new=1`);
-      } catch(e){ $("#c_err").innerHTML = `<div class="err">${esc(errMsg(e))}</div>`; b.disabled=false; b.textContent = forceOpen ? "🙋‍♀️ بریم بیرون؟ (بدون تعیین وقت از اول)" : "بساز و لینک بگیر ✨"; }
+      } catch(e){ $("#c_err").innerHTML = `<div class="err">${esc(errMsg(e))}</div>`; b.disabled=false; b.textContent = forceOpen ? "🙋‍♀️ ساخت دورهمی باز و گرفتن کد و لینک ✨" : "📅 ساخت با تاریخ"; }
     }
     $("#c_go").onclick = () => createMeetup(false);
     $("#c_go_open").onclick = () => createMeetup(true);
@@ -697,11 +865,18 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   }
 
   function shareText(){
-    return `سلام 🌿 برای «${M.title}» این فرم کوتاه را پر کنید (۳ دقیقه، بدون ثبت‌نام). هرچی خواستید خصوصی می‌ماند. بعد بهترین روز و جا برای همه پیدا می‌شود:\n${linkFor(M.code)}`;
+    return `سلام 🌿 برای «${M.title}» (کد دورهمی: ${M.code}) این لینک را باز کنید و بگویید چه ساعت‌هایی و تا چه محدوده‌ای روی نقشه می‌توانید بیایید:\n${linkFor(M.code)}`;
   }
   function shareButtons(){
     return `
-      <div class="copybox"><code>${esc(linkFor(M.code))}</code><button class="btn sm" id="cp">کپی</button></div>
+      <div style="background:#f7f5ff;border:1.5px dashed #d5cbf5;border-radius:12px;padding:8px 12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+        <span class="tiny">🔑 کد ورود به این دورهمی:</span>
+        <div class="row" style="gap:6px">
+          <code style="font-size:16px;font-weight:800;color:var(--p);letter-spacing:1px">${esc(M.code)}</code>
+          <button type="button" class="btn ghost sm" id="cp_code">کپی کد</button>
+        </div>
+      </div>
+      <div class="copybox"><code>${esc(linkFor(M.code))}</code><button class="btn sm" id="cp">کپی لینک</button></div>
       <div class="row" style="margin-top:10px">
         <a class="btn wa grow" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(shareText())}">واتس‌اپ</a>
         <a class="btn line grow" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(linkFor(M.code))}&text=${encodeURIComponent(shareText().split("\n")[0])}">تلگرام</a>
@@ -709,19 +884,21 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       </div>`;
   }
   function bindShare(){
+    const cpc = $("#cp_code"); if (cpc) cpc.onclick = async () => { try { await navigator.clipboard.writeText(M.code); toast("کد دورهمی کپی شد ✓"); } catch(e){} };
     const cp = $("#cp"); if (cp) cp.onclick = async () => { try { await navigator.clipboard.writeText(shareText()); toast("متن و لینک کپی شد ✓"); } catch(e){ toast("کپی نشد؛ لینک را دستی انتخاب کن"); } };
     const ns = $("#nshare"); if (ns) ns.onclick = () => navigator.share({title:M.title, text:shareText()}).catch(()=>{});
   }
   function createdPage(){
     const adminLink = `${linkFor(M.code)}?admin=${ADMIN}`;
     app.innerHTML = topbar() + `
-      <header class="top"><span class="logo">🌿</span><div><b>${esc(M.title)}</b><small>ساخته شد</small></div></header>
+      <header class="top"><span class="logo">🌿</span><div><b>${esc(M.title)}</b><small>ساخته شد · کد: #${esc(M.code)}</small></div></header>
       <div class="card"><div class="hero-e">🎉</div><h1>آماده است!</h1>
-        <p>این لینک را در گروه بفرست:</p>${shareButtons()}</div>
+        <p>کد یا لینک زیر را برای دوستانت بفرست تا ساعت‌ها و محدودهٔ مکانشان را روی نقشه بزنند:</p>${shareButtons()}</div>
       <div class="card"><h2>🔑 لینک مخصوص خودت (برگزارکننده)</h2>
         <p class="muted">با این لینک می‌توانی آخر کار روز و جا را «قطعی» کنی. این را در گروه نفرست؛ برای خودت نگه دار (مثلاً در «Saved messages»).${USER?" چون وارد همراه شده‌ای، از «بریم بیرون» هم همیشه به آن دسترسی داری.":""}</p>
         <div class="copybox"><code>${esc(adminLink)}</code><button class="btn sm ghost" id="cpa">کپی</button></div></div>
       <a class="btn block" href="/d/${M.code}?admin=${ADMIN}&form=1">حالا فرم خودم را پر کنم ←</a>`;
+    bindLoginLinks();
     bindShare();
     $("#cpa").onclick = async () => { try { await navigator.clipboard.writeText(adminLink); toast("لینک برگزارکننده کپی شد ✓"); } catch(e){} };
   }
@@ -745,72 +922,57 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     D.avail = {...(edit ? D.avail : {})};
     const steps = [
       {k:"hi", t:"سلام 👋", draw: () => `
+        <div style="background:#f8f6ff;border:1.5px solid #e1daf7;border-radius:14px;padding:10px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+          <div>
+            <span class="tiny">👤 سازنده: <b>${esc(M.organizer_name || "دوستان")}</b></span>
+            <span class="tiny" style="margin-right:8px">· 👥 <b>${fa(M.count || 0)}</b> نفر شرکت کرده‌اند</span>
+          </div>
+          <code class="tiny" style="background:#fff;padding:2px 8px;border-radius:6px;color:var(--p)">کد: #${esc(M.code)}</code>
+        </div>
         <h1>${esc(M.title)}</h1>
         ${M.note?`<p>${esc(M.note)}</p>`:""}
-        <p class="muted">${M.organizer_name?esc(M.organizer_name)+" دعوتت کرده. ":""}بگو چه روزها، چه ساعت‌هایی و کدام لوکیشن‌ها می‌توانی بیایی تا بهترین زمان و مکان مشترک برای همه پیدا شود. ${M.women_only?"<b>این دورهمی فقط برای خانم‌هاست.</b>":""}</p>
-        ${KNOWN_PROFILES.length ? `
-          <div style="background:#f9f8ff;border:1.5px solid #dfd8f7;border-radius:14px;padding:12px;margin:10px 0">
-            <b style="font-size:13.5px;display:block;margin-bottom:6px">👤 از بچه‌های قبلی هستی؟ روی اسمت بزن تا اطلاعاتت بیاید:</b>
-            <div class="prof-grid">
-              ${KNOWN_PROFILES.map(p => `
-                <div class="prof-btn ${NAME===p.name?"on":""}" data-pickprof="${esc(p.name)}">
-                  <div class="av-sm" style="background:${colorOf(p.name)}">${esc(p.name.slice(0,1))}</div>
-                  <div style="min-width:0">
-                    <div class="nm">${esc(p.name)}</div>
-                    <div class="tiny" style="font-size:11px">${esc(p.data?.origin?.fa || "آماده")}</div>
-                  </div>
-                </div>`).join("")}
-            </div>
-          </div>` : ""}
-        ${quick?`<div class="okbox">✨ جواب‌های دفعهٔ قبلت را گذاشتم: مبدأ (${esc(D.origin?.fa || "ثبت‌شده")})، وسیله، غذا، ترجیح‌ها و حریم خصوصی. فقط ساعت‌ها و لوکیشن‌هایی که این بار می‌تونی رو بزن؛ در صفحهٔ آخر هر بخش را خواستی با یک ضربه عوض کن.</div>`
+        <p class="muted">بگو چه روزها، چه ساعت‌هایی و تا چه محدوده‌ای روی نقشه می‌توانی بیایی تا بهترین زمان و مکان مشترک برای همه پیدا شود. ${M.women_only?"<b>این دورهمی فقط برای خانم‌هاست.</b>":""}</p>
+        ${quick?`<div class="okbox">✨ جواب‌های دفعهٔ قبلت را گذاشتم: مبدأ (${esc(D.origin?.fa || "ثبت‌شده")})، وسیله، غذا، ترجیح‌ها و حریم خصوصی. فقط ساعت‌ها و محدوده‌ای که این بار می‌تونی رو بزن؛ در صفحهٔ آخر هر بخش را خواستی با یک ضربه عوض کن.</div>`
           : prefilled?`<div class="note">✨ چند جواب را از پروفایل «همراه»ت پر کردم. هر کدام را خواستی عوض کن.</div>`:""}
-        <label class="f">یا اسمت را اینجا بنویس</label>
-        <input type="text" id="f_name" maxlength="40" value="${esc(NAME)}" placeholder="مثلاً سارا">
+        <label class="f">اسمت</label>
+        <input type="text" id="f_name" maxlength="40" value="${esc(NAME)}" placeholder="مثلاً مریم یا سارا">
+        <label class="f">📧 جیمیل / ایمیل (اختیاری — برای اینکه پروفایلت دائمی شود و دفعهٔ بعد خودکار پر شود)</label>
+        <input type="email" id="f_email" class="ltr" maxlength="120" value="${esc(D.email || "")}" placeholder="you@gmail.com">
         <div class="okbox" style="margin-top:10px">🔒 زیر هر سؤال یک کلید هست: <b>«به بقیه نشان بده»</b>. اگر خاموش باشد، جوابت فقط به‌صورت بی‌نام در حساب‌ها می‌آید.</div>`,
-        after: () => {
-          root.querySelectorAll("[data-pickprof]").forEach(el => el.onclick = () => {
-            const p = KNOWN_PROFILES.find(x => x.name === el.dataset.pickprof);
-            if (!p) return;
-            NAME = p.name;
-            D = {...JSON.parse(JSON.stringify(p.data || {})), avail: D.avail || {}};
-            if (p.public_fields && p.public_fields.length) PUB = new Set(p.public_fields.map(groupOf));
-            quick = true; prefilled = true;
-            store.set("dh_last", {name: NAME, data: p.data || {}, pub: p.public_fields || [], saved: true});
-            draw();
-            toast(`اطلاعات ${NAME} بارگذاری شد ✓`);
-          });
-        },
+        after: () => {},
         read: () => {
           NAME = $("#f_name").value.trim();
+          const em = ($("#f_email")?.value || "").trim().toLowerCase();
+          if (em) D.email = em;
+          if (!NAME && em) NAME = em.split("@")[0];
           if (!NAME) return "اسمت را بنویس 🙂";
           if (!prefilled && !edit) {
-            const match = KNOWN_PROFILES.find(x => x.name.toLowerCase() === NAME.toLowerCase());
+            const match = (em && KNOWN_PROFILES.find(x => (x.email || x.data?.email || "").toLowerCase() === em))
+              || KNOWN_PROFILES.find(x => x.name.toLowerCase() === NAME.toLowerCase());
             if (match && match.data) {
-              D = {...JSON.parse(JSON.stringify(match.data)), avail: D.avail || {}};
+              D = {...JSON.parse(JSON.stringify(match.data)), ...(em ? {email: em} : {}), avail: D.avail || {}};
               if (match.public_fields && match.public_fields.length) PUB = new Set(match.public_fields.map(groupOf));
               quick = true; prefilled = true;
             }
           }
         }},
       {k:"origin", t:"از کجا میای؟", draw: () => `
-        <h2>📍 از کجا راه میفتی و تا کجاها می‌تونی بیای؟</h2>
-        <p class="muted">نزدیک‌ترین شهر یا ایستگاهت را انتخاب کن تا محدودهٔ حرکتت روی نقشه مشخص شود.</p>
+        <h2>📍 از کجا راه میفتی و تا چه شعاعی می‌تونی بیای؟</h2>
+        <p class="muted">نزدیک‌ترین شهر یا ایستگاهت را انتخاب کن، بعد با اسلایدر زیر دایرهٔ محدودهٔ حرکتت را روی نقشه کم‌وزیاد کن:</p>
         <input type="text" id="f_cs" placeholder="جستجو: روتردام، Delft، لایدن…">
         <div class="list-sel" id="f_cl"></div>
         <div class="row" style="margin-top:8px;justify-content:space-between;flex-wrap:wrap">
           <button class="btn line sm" id="f_geo">📡 از موقعیت گوشی‌ام (حدود ۵ کیلومتر)</button>
           <div id="f_osel"></div>
         </div>
-        <label class="f" style="margin-top:12px">🗺️ نقشهٔ محدودهٔ تو و شهرهایی که راحتی همدیگر را ببینیم:</label>
+        <label class="f" style="margin-top:12px">🗺️ محدودهٔ حرکت تو روی نقشه (دایره را کم‌وزیاد کن یا روی نقاط نقشه بزن):</label>
+        ${renderRadiusSlider(D, "f_orig_rad")}
         <div id="f_orig_map" class="map-box"></div>
         <div class="map-legend">
-          <span><i class="map-dot" style="background:#6C5CE7"></i>مبدأ و شعاع حرکت</span>
-          <span><i class="map-dot" style="background:#00B894"></i>شهرهایی که می‌توانم بیایم</span>
+          <span><i class="map-dot" style="background:#6C5CE7"></i>مبدأ و دایرهٔ شعاع حرکت</span>
+          <span><i class="map-dot" style="background:#00B894"></i>نقاط داخل دایره / انتخاب‌شده</span>
         </div>
-        <div class="chips" id="f_cancities" style="margin-top:8px">
-          ${CITIES.filter(c => c.meet).map(c => `<span class="chip ${(D.can_cities||[]).includes(c.key)?"on":""}" data-cancity="${c.key}">${esc(c.fa)}</span>`).join("")}
-        </div>
-        ${visT("origin","شهر و لوکیشن‌هایم را به بقیه نشان بده")}`,
+        ${visT("origin","شهر و محدوده‌ام را به بقیه نشان بده")}`,
         after: () => {
           clearAuxMaps();
           const refreshOrigMap = () => {
@@ -832,11 +994,10 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           const toggleCanCity = (k) => {
             const arr = D.can_cities || [];
             D.can_cities = arr.includes(k) ? arr.filter(x => x !== k) : [...arr, k];
-            root.querySelectorAll("[data-cancity]").forEach(el => el.classList.toggle("on", (D.can_cities||[]).includes(el.dataset.cancity)));
             refreshOrigMap();
           };
-          root.querySelectorAll("[data-cancity]").forEach(el => el.onclick = () => toggleCanCity(el.dataset.cancity));
           mountZoneMap("f_orig_map", D, { onToggleCity: (c) => toggleCanCity(c.key) });
+          wireRadiusSlider("f_orig_rad", D, "f_orig_map");
           $("#f_geo").onclick = () => {
             if (!navigator.geolocation) return toast("گوشی موقعیت نمی‌دهد");
             $("#f_geo").innerHTML = `<span class="spin"></span>`;
@@ -889,14 +1050,12 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         </div>
         <label class="f" style="margin-top:8px">⏰ توضیح ساعت دلخواه (اختیاری — مثلاً: شنبه ۱۴ تا ۱۹ یا جمعه بعد از کار)</label>
         <input type="text" id="f_fnote" maxlength="100" value="${esc(D.free_note||"")}" placeholder="مثلاً: یکشنبه‌ها از ساعت ۱۵ به بعد">
-        <label class="f" style="margin-top:10px">🗺️ محدودهٔ حرکت و شهرهایی که می‌توانی بیایی (روی نقشه یا دکمه‌ها بزن):</label>
+        <label class="f" style="margin-top:10px">🗺️ محدودهٔ حرکت روی نقشه (دایره را کم‌وزیاد کن یا روی نقاط نقشه بزن):</label>
+        ${renderRadiusSlider(D, "f_av_rad")}
         <div id="f_av_map" class="map-box"></div>
         <div class="map-legend">
-          <span><i class="map-dot" style="background:#6C5CE7"></i>مبدأ و شعاع حرکت</span>
-          <span><i class="map-dot" style="background:#00B894"></i>شهرهایی که می‌توانم بیایم</span>
-        </div>
-        <div class="chips" id="f_avcities" style="margin-top:8px">
-          ${CITIES.filter(c=>c.meet).map(c => `<span class="chip ${(D.can_cities||[]).includes(c.key)||(D.origin&&D.origin.key===c.key)?"on":""}" data-avcity="${c.key}">${esc(c.fa)}</span>`).join("")}
+          <span><i class="map-dot" style="background:#6C5CE7"></i>مبدأ و دایرهٔ شعاع حرکت</span>
+          <span><i class="map-dot" style="background:#00B894"></i>نقاط داخل دایره / انتخاب‌شده</span>
         </div>
         <label class="f">🕘 معمولاً تا چه ساعتی می‌تونی بمونی؟</label>
         <div class="chips">${Object.entries(UNTIL_L).map(([k,l])=>`<span class="chip ${D.until===k?"on":""}" data-until="${k}">${l}</span>`).join("")}</div>
@@ -943,15 +1102,11 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           const toggleAvCity = (k) => {
             const arr = D.can_cities || [];
             D.can_cities = arr.includes(k) ? arr.filter(x => x !== k) : [...arr, k];
-            root.querySelectorAll("[data-avcity]").forEach(el => {
-              const ck = el.dataset.avcity;
-              el.classList.toggle("on", (D.can_cities||[]).includes(ck) || (D.origin && D.origin.key === ck));
-            });
             const mEl = document.getElementById("f_av_map");
             if (mEl && mEl._redrawMap) mEl._redrawMap();
           };
-          root.querySelectorAll("[data-avcity]").forEach(el => el.onclick = () => toggleAvCity(el.dataset.avcity));
           mountZoneMap("f_av_map", D, { onToggleCity: (c) => toggleAvCity(c.key) });
+          wireRadiusSlider("f_av_rad", D, "f_av_map");
           oneOf("[data-until]", v => D.until = v);
           oneOf("[data-night]", v => D.night_alone = v, ".opt");
         },
@@ -1078,6 +1233,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           ${i>0?`<button class="btn line" id="f_back">قبلی</button>`:""}
           <button class="btn grow" id="f_next">${i===steps.length-1?(edit?"ذخیرهٔ تغییرات ✓":"ثبت و دیدن نتیجه ✓"):"بعدی"}</button>
         </div></div>`;
+      bindLoginLinks();
       root.querySelectorAll("[data-vis]").forEach(el => el.onclick = () => { const g = el.dataset.vis; PUB.has(g) ? PUB.delete(g) : PUB.add(g); el.classList.toggle("on", PUB.has(g)); });
       s.after && s.after();
       $("#f_next").onclick = next;
@@ -1099,8 +1255,8 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         const r = await rpc("dh_respond", {p_code:CODE, p_edit:edit||null, p_name:NAME, p_data:clean, p_public:pubFields});
         store.set("dh_"+CODE, {...(store.get("dh_"+CODE)||{}), title:M.title, edit:r.edit_token, name:NAME});
         const keep = {...clean}; delete keep.avail;
-        if (!USER) { store.set("dh_last", {name:NAME, data:keep, pub:pubFields, saved:true}); }
-        fetch("/api/d/profiles", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({name:NAME, data:keep, public_fields:pubFields})}).catch(()=>{});
+        if (!USER) { store.set("dh_last", {name:NAME, email:keep.email||"", data:keep, pub:pubFields, saved:true}); }
+        fetch("/api/d/profiles", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({name:NAME, email:keep.email||null, data:keep, public_fields:pubFields})}).catch(()=>{});
         profilesLoaded = false;
         toast("ثبت شد ✓"); go(`/d/${CODE}?tab=result`);
       } catch(e){ $("#f_err").innerHTML = `<div class="err">${esc(errMsg(e))}</div>`; b.disabled=false; b.textContent="دوباره امتحان کن"; }

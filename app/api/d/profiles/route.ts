@@ -24,27 +24,38 @@ async function fetchFallbackRpcProfiles() {
       if (!cleanName || IGNORE_NAMES.has(cleanName) || /^تست\b/i.test(cleanName)) continue;
       const key = cleanName.toLowerCase();
       const { id, name, member, ...restData } = p;
-      const prev = byName.get(key);
+      const emailKey = typeof restData.email === 'string' && restData.email.includes('@') ? restData.email.trim().toLowerCase() : null;
+      const prev = byName.get(key) || (emailKey ? byName.get(emailKey) : undefined);
       if (!prev) {
-        byName.set(key, {
+        const entry = {
           name: cleanName,
+          email: emailKey,
           data: { ...restData },
           public_fields: Object.keys(restData),
           updated_at: m.created_at,
-          meetups: isReal ? [{ code: m.code, title: m.title, final: m.final }] : [],
-        });
+          meetups: isReal ? [{ code: m.code, title: m.title, organizer_name: m.organizer_name, count: m.count, final: m.final }] : [],
+        };
+        byName.set(key, entry);
+        if (emailKey) byName.set(emailKey, entry);
       } else {
         prev.data = { ...restData, ...prev.data };
+        if (emailKey && !prev.email) {
+          prev.email = emailKey;
+          byName.set(emailKey, prev);
+        }
         if (isReal && !prev.meetups.some((x: any) => x.code === m.code)) {
-          prev.meetups.push({ code: m.code, title: m.title, final: m.final });
+          prev.meetups.push({ code: m.code, title: m.title, organizer_name: m.organizer_name, count: m.count, final: m.final });
         }
       }
     }
   };
   ingest(dir, false);
   ingest(m1, true);
-  const recentMeetups = m1 ? [{ code: m1.code, title: m1.title, organizer_name: m1.organizer_name, final: m1.final }] : [];
-  return { profiles: [...byName.values()], recentMeetups };
+  const uniqueProfiles = Array.from(new Set(byName.values()));
+  const recentMeetups = m1
+    ? [{ code: m1.code, title: m1.title, organizer_name: m1.organizer_name, count: m1.count ?? (m1.people?.length || 0), final: m1.final, created_at: m1.created_at }]
+    : [];
+  return { profiles: uniqueProfiles, recentMeetups };
 }
 
 async function getOrCreateDirectoryMeetupId(db: ReturnType<typeof admin>): Promise<string | null> {
@@ -77,6 +88,7 @@ async function getOrCreateDirectoryMeetupId(db: ReturnType<typeof admin>): Promi
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const onlyName = url.searchParams.get('name')?.trim();
+  const onlyEmail = url.searchParams.get('email')?.trim().toLowerCase();
   const db = admin();
 
   const [{ data: rows }, { data: meetups }] = await Promise.all([
@@ -94,14 +106,20 @@ export async function GET(req: Request) {
   ]);
 
   const meetupById = new Map((meetups ?? []).map((m: any) => [m.id, m]));
+  const countByMeetupId = new Map<string, number>();
+  for (const r of rows ?? []) {
+    countByMeetupId.set(r.meetup_id, (countByMeetupId.get(r.meetup_id) ?? 0) + 1);
+  }
+
   const byName = new Map<
     string,
     {
       name: string;
+      email?: string | null;
       data: Record<string, any>;
       public_fields: string[];
       updated_at: string;
-      meetups: { code: string; title: string; final: any }[];
+      meetups: { code: string; title: string; organizer_name?: string; count?: number; final: any }[];
     }
   >();
 
@@ -109,26 +127,42 @@ export async function GET(req: Request) {
     const cleanName = String(r.name ?? '').trim();
     if (!cleanName || IGNORE_NAMES.has(cleanName) || /^تست\b/i.test(cleanName)) continue;
     const key = cleanName.toLowerCase();
-    const prev = byName.get(key);
     const rData = (r.data && typeof r.data === 'object' ? r.data : {}) as Record<string, any>;
+    const emailKey = typeof rData.email === 'string' && rData.email.includes('@') ? rData.email.trim().toLowerCase() : null;
+    const prev = byName.get(key) || (emailKey ? byName.get(emailKey) : undefined);
     const m = meetupById.get(r.meetup_id);
     const isRealMeetup = m && !/e2e|تست دورهمی/i.test(m.title ?? '');
 
     if (!prev) {
-      byName.set(key, {
+      const entry = {
         name: cleanName,
+        email: emailKey,
         data: { ...rData },
         public_fields: Array.isArray(r.public_fields) ? r.public_fields : [],
         updated_at: r.updated_at,
-        meetups: isRealMeetup ? [{ code: m.code, title: m.title, final: m.final }] : [],
-      });
+        meetups: isRealMeetup
+          ? [{ code: m.code, title: m.title, organizer_name: m.organizer_name, count: countByMeetupId.get(m.id) ?? 1, final: m.final }]
+          : [],
+      };
+      byName.set(key, entry);
+      if (emailKey) byName.set(emailKey, entry);
     } else {
       prev.data = { ...rData, ...prev.data };
+      if (emailKey && !prev.email) {
+        prev.email = emailKey;
+        byName.set(emailKey, prev);
+      }
       if (!prev.public_fields.length && Array.isArray(r.public_fields)) {
         prev.public_fields = r.public_fields;
       }
       if (isRealMeetup && !prev.meetups.some((x) => x.code === m.code)) {
-        prev.meetups.push({ code: m.code, title: m.title, final: m.final });
+        prev.meetups.push({
+          code: m.code,
+          title: m.title,
+          organizer_name: m.organizer_name,
+          count: countByMeetupId.get(m.id) ?? 1,
+          final: m.final,
+        });
       }
     }
   }
@@ -136,9 +170,16 @@ export async function GET(req: Request) {
   const recentMeetups = (meetups ?? [])
     .filter((m: any) => !/e2e|تست دورهمی/i.test(m.title ?? ''))
     .slice(0, 10)
-    .map((m: any) => ({ code: m.code, title: m.title, organizer_name: m.organizer_name, final: m.final }));
+    .map((m: any) => ({
+      code: m.code,
+      title: m.title,
+      organizer_name: m.organizer_name,
+      count: countByMeetupId.get(m.id) ?? 0,
+      final: m.final,
+      created_at: m.created_at,
+    }));
 
-  let profiles = [...byName.values()];
+  let profiles = Array.from(new Set(byName.values()));
   let finalMeetups = recentMeetups;
 
   if (!profiles.length && !finalMeetups.length) {
@@ -147,6 +188,11 @@ export async function GET(req: Request) {
       profiles = fb.profiles;
       finalMeetups = fb.recentMeetups;
     }
+  }
+
+  if (onlyEmail) {
+    const found = profiles.find((p) => (p.email || p.data?.email || '').toLowerCase() === onlyEmail) ?? null;
+    return NextResponse.json({ profile: found, recentMeetups: finalMeetups });
   }
 
   if (onlyName) {
@@ -164,10 +210,13 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const name = String(body.name ?? '').trim().slice(0, 40);
-  const data = body.data && typeof body.data === 'object' ? body.data : {};
+  const email = typeof body.email === 'string' && body.email.includes('@') ? body.email.trim().toLowerCase().slice(0, 120) : null;
+  const data = body.data && typeof body.data === 'object' ? { ...body.data } : {};
+  if (email) data.email = email;
   const publicFields = Array.isArray(body.public_fields)
     ? body.public_fields.filter((x: unknown): x is string => typeof x === 'string').slice(0, 40)
     : [];
+  if (email && !publicFields.includes('email')) publicFields.push('email');
 
   if (!name) return NextResponse.json({ error: 'name_required' }, { status: 400 });
 
@@ -187,10 +236,10 @@ export async function POST(req: Request) {
       p_data: cleanData,
       p_public: publicFields.length
         ? publicFields
-        : ['origin', 'can_cities', 'free_windows', 'free_note', 'modes', 'activities', 'hobbies', 'about'],
+        : ['origin', 'can_cities', 'free_windows', 'free_note', 'modes', 'activities', 'hobbies', 'about', 'email'],
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ ok: true, name, edit_token: res?.edit_token ?? null });
+    return NextResponse.json({ ok: true, name, email, edit_token: res?.edit_token ?? null });
   }
 
   const { user } = await getSession().catch(() => ({ user: null }));
