@@ -30,6 +30,7 @@ export async function middleware(req: NextRequest) {
 
   if (!user) {
     if (PUBLIC.some((p) => path.startsWith(p)) || isDorehami(path)) return res;
+    if (path === '/') return redirect('/d');
     const r = redirect('/login');
     // remember an invite link so the user lands on it after login/onboarding
     if (path.startsWith('/out/join/') || isDorehami(path)) r.cookies.set('hamrah_next', path, { maxAge: 3600, path: '/', sameSite: 'lax' });

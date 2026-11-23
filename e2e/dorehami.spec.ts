@@ -42,6 +42,7 @@ test('guest: create → answer → result → finalize → delete', async ({ pag
   await page.locator('#a_venue').fill('کافه تست');
   await page.locator('#a_go').click();
   await expect(page.getByText('قطعی شد').first()).toBeVisible();
+  await page.waitForTimeout(500);
 
   await page.locator('[data-tab=share]').click();
   await page.locator('#a_delete').click();

@@ -41,7 +41,10 @@ export default function Login() {
       const { error } = await supabase.auth.verifyOtp({ token_hash: json.token_hash, type: 'email' });
       if (error) { console.error('login: session exchange failed', error); setErr('ورود کامل نشد، دوباره امتحان کن'); setBusy(false); return; }
     }
-    router.replace('/discover');
+    const searchParams = new URLSearchParams(window.location.search);
+    const nextUrl = searchParams.get('next');
+    const target = (nextUrl && nextUrl.startsWith('/')) ? nextUrl : '/discover';
+    router.replace(target);
     router.refresh();
   }
 
@@ -52,7 +55,16 @@ export default function Login() {
     <main className="min-h-screen p-6 flex flex-col justify-center">
       <div className="text-5xl mb-4">🤝</div>
       <h1 className="text-2xl font-extrabold mb-2">خوش اومدی به همراه</h1>
-      <p className="text-muted text-sm mb-6">یک کد یک‌بارمصرف برات می‌فرستیم.</p>
+      <p className="text-muted text-sm mb-4">یک کد یک‌بارمصرف برات می‌فرستیم.</p>
+
+      <div className="p-3 mb-5 bg-card border border-line rounded-xl text-xs flex items-center justify-between">
+        <div className="text-muted leading-relaxed">
+          💡 <span>می‌توانی اول بدون ثبت‌نام ایونت بسازی یا قراری پیدا کنی!</span>
+        </div>
+        <Link href="/d" className="text-indigo-950 font-extrabold hover:underline whitespace-nowrap mr-2">
+          شروع آزاد ←
+        </Link>
+      </div>
 
       {step === 'id' ? (
         <>

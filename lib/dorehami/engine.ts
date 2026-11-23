@@ -791,7 +791,8 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   // remember where to come back after login (middleware reads hamrah_next)
   function bindLoginLinks(){
     root.querySelectorAll("[data-login]").forEach(a => a.addEventListener("click", () => {
-      document.cookie = `hamrah_next=${location.pathname}; path=/; max-age=3600; samesite=lax`;
+      const returnUrl = location.pathname + location.search;
+      document.cookie = `hamrah_next=${returnUrl}; path=/; max-age=3600; samesite=lax`;
     }));
     const tbBtn = $("#tb_prof_btn");
     if (tbBtn) tbBtn.onclick = () => openProfileModal();
@@ -803,7 +804,32 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       if (ADMIN) return `<div class="card"><h2>💬 ادامه در همراه</h2><p class="muted">یک برنامهٔ «بریم بیرون» با گفتگوی گروهی می‌سازم. هر کس با حساب همراه فرم را پر کرده خودکار اضافه می‌شود؛ بقیه با همین لینک بعداً می‌پیوندند.</p><button class="btn block" id="dh_plan">ساخت گفتگوی گروه ✨</button></div>`;
       return "";
     }
-    return `<div class="card"><h2>🌿 با حساب «همراه» بهتر است</h2><p class="muted">جواب‌هایت برای دورهمی‌های بعدی می‌ماند، در گفتگوی گروه شرکت می‌کنی و یادآوری می‌گیری. اجباری نیست.</p><a class="btn ghost block" href="/login" data-ext="1" data-login="1">ورود یا ساخت حساب</a></div>`;
+    const hasDismissed = Boolean(store.get("dh_dismiss_auth_" + CODE));
+    if (hasDismissed) {
+      return `
+        <div style="text-align:center;padding:10px 4px;margin-top:6px">
+          <span class="tiny" style="color:var(--muted)">👤 پاسخ‌هایت روی همین گوشی ذخیره است · </span>
+          <a href="/login?next=${encodeURIComponent(location.pathname + location.search)}" class="tiny" style="color:var(--p);font-weight:700" data-ext="1" data-login="1">اتصال به حساب همراه</a>
+        </div>
+      `;
+    }
+    const returnUrl = encodeURIComponent(location.pathname + location.search);
+    return `
+      <div class="card" id="post_rsvp_auth_box" style="background:linear-gradient(135deg, #fbfaff 0%, #f4f0fd 100%);border:1.5px solid #ded5f7;border-radius:14px;padding:14px 16px;margin:12px 0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="font-size:22px">📬</span>
+          <b style="font-size:15px">دوست داری حسابت را ذخیره کنی؟</b>
+          <span class="pill sm" style="background:#fff;color:var(--p)">اختیاری</span>
+        </div>
+        <p class="muted tiny" style="margin:0 0 12px;line-height:1.6">
+          پاسخ‌هایت ثبت شد! اگر می‌خواهی حسابت ذخیره شود تا وقتی برنامه قطعی شد باخبر شوی و در گفتگوی گروه شرکت کنی، می‌توانی وارد شوی (اجباری نیست):
+        </p>
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          <a href="/login?next=${returnUrl}" class="btn sm" data-ext="1" data-login="1">🔐 ذخیره و ورود با ایمیل یا موبایل</a>
+          <button type="button" class="btn line sm" id="post_rsvp_dismiss_btn">نه، فقط روی همین گوشی بماند</button>
+        </div>
+      </div>
+    `;
   }
   function bindMember(){
     const pl = $("#dh_plan"); if (pl) pl.onclick = async () => {
@@ -816,6 +842,14 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       try { const id = await rpc("dh_join_plan", {p_code:CODE}); location.href = `/out/p/${id}`; }
       catch(e){ toast(errMsg(e)); jn.disabled = false; }
     };
+    const rsvpDis = $("#post_rsvp_dismiss_btn");
+    if (rsvpDis) {
+      rsvpDis.onclick = () => {
+        store.set("dh_dismiss_auth_" + CODE, 1);
+        resultPage();
+        toast("پاسخ‌هایت روی همین دستگاه ذخیره ماند ✓");
+      };
+    }
     bindLoginLinks();
   }
 
@@ -1254,10 +1288,34 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       <div class="card"><h2>🔑 لینک مخصوص خودت (برگزارکننده)</h2>
         <p class="muted">با این لینک می‌توانی آخر کار روز و جا را «قطعی» کنی. این را در گروه نفرست؛ برای خودت نگه دار (مثلاً در «Saved messages»).${USER?" چون وارد همراه شده‌ای، از «بریم بیرون» هم همیشه به آن دسترسی داری.":""}</p>
         <div class="copybox"><code>${esc(adminLink)}</code><button class="btn sm ghost" id="cpa">کپی</button></div></div>
+      
+      ${!USER ? `
+      <div class="card" id="post_create_auth_box" style="background:linear-gradient(135deg, #fbfaff 0%, #f4f0fd 100%);border:1.5px solid #ded5f7;border-radius:14px;padding:14px 16px;margin:12px 0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="font-size:22px">🔐</span>
+          <b style="font-size:15px">دوست داری این ایونت روی حسابت ذخیره بشه؟</b>
+          <span class="pill sm" style="background:#fff;color:var(--p)">اختیاری</span>
+        </div>
+        <p class="muted tiny" style="margin:0 0 12px;line-height:1.6">
+          ایونتت ساخته شد! اگر می‌خواهی در هر گوشی یا سیستمی به آن دسترسی داشته باشی و وقتی دوستانت اعلام حضور کردند باخبر شوی، می‌توانی حسابت را ثبت کنی (اجباری نیست):
+        </p>
+        <div class="row" style="gap:8px;flex-wrap:wrap">
+          <a href="/login?next=${encodeURIComponent(`/d/${M.code}?admin=${ADMIN}`)}" class="btn sm" data-ext="1" data-login="1">✨ ذخیره با ایمیل یا شماره موبایل</a>
+          <button type="button" class="btn line sm" id="post_create_dismiss_btn">فعلاً مهمان می‌مانم</button>
+        </div>
+      </div>` : ""}
+
       <a class="btn block" href="/d/${M.code}?admin=${ADMIN}&form=1">حالا فرم خودم را پر کنم ←</a>`;
     bindLoginLinks();
     bindShare();
     $("#cpa").onclick = async () => { try { await navigator.clipboard.writeText(adminLink); toast("لینک برگزارکننده کپی شد ✓"); } catch(e){} };
+    const disBtn = $("#post_create_dismiss_btn");
+    if (disBtn) {
+      disBtn.onclick = () => {
+        $("#post_create_auth_box")?.remove();
+        toast("به عنوان مهمان ادامه می‌دهی ✓");
+      };
+    }
   }
 
   /* ============ the form (wizard) ============ */
