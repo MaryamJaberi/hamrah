@@ -1798,17 +1798,28 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       ${M.note ? `<div class="okbox" style="margin:8px 0;background:#f6f4fe;border-color:#d7cbfa">💬 <b>پیام ${esc(M.organizer_name || "برگزارکننده")}:</b> ${esc(M.note.replace(/^\[همراه دو‌نفره\]\s*/, ""))}</div>` : ""}
       ${M.final ? finalCard(M.final) : ""}
       <div class="tabs">
-        ${[["result","🧭 نتیجه"],["people","👯‍♀️ آدم‌ها"],["ice","🧊 یخ‌شکن"],["share","📤 دعوت"]].map(([k,l])=>`<span class="tab ${TAB===k?"on":""}" data-tab="${k}">${l}</span>`).join("")}
+        ${[["result","🧭 نتیجه"],["people","👯‍♀️ آدم‌ها"],["ice","🧊 یخ‌شکن"],["share", ADMIN ? "⚙️ دعوت و مدیریت" : "📤 دعوت"]].map(([k,l])=>`<span class="tab ${TAB===k?"on":""}" data-tab="${k}">${l}</span>`).join("")}
       </div>
       <div id="tabc"></div>
       ${memberCard()}
-      <div class="row" style="margin-top:14px">
+      <div class="row" style="margin-top:14px;flex-wrap:wrap;gap:6px">
         <a class="btn line sm" href="/d/${CODE}?form=1">✏️ ویرایش فرم من</a>
         ${my.edit?`<button class="btn line sm" id="del_me">🗑️ پاک کردن جواب من</button>`:`<a class="btn sm" href="/d/${CODE}?form=1">📝 پر کردن فرم</a>`}
+        ${ADMIN ? `<button class="btn line sm" id="quick_admin_btn" style="color:var(--p);font-weight:700">⚙️ مدیریت و حذف ایونت</button>` : ""}
         <a class="btn line sm" href="/d">+ دورهمی تازه</a>
       </div>
       <p class="tiny" style="margin-top:10px">زمان‌های راه تخمینی‌اند (بر اساس فاصله). برای مسیر دقیق از <a href="https://9292.nl/" target="_blank" rel="noopener">9292</a> یا گوگل‌مپ استفاده کن. ${my.name?`تو با اسم «${esc(my.name)}» پر کرده‌ای.`:""}</p>`;
     root.querySelectorAll("[data-tab]").forEach(t => t.onclick = () => { TAB = t.dataset.tab; resultPage(); });
+    const qAdminBtn = $("#quick_admin_btn");
+    if (qAdminBtn) {
+      qAdminBtn.onclick = () => {
+        TAB = "share";
+        resultPage();
+        setTimeout(() => {
+          $("#a_delete")?.scrollIntoView({ behavior: "smooth" });
+        }, 100);
+      };
+    }
     if ($("#del_me")) $("#del_me").onclick = async () => {
       if (!confirm("جوابت کامل پاک شود؟")) return;
       try { await rpc("dh_delete_mine", {p_code:CODE, p_edit:my.edit}); store.set("dh_"+CODE, {title:M.title, admin:my.admin}); toast("پاک شد"); go(`/d/${CODE}`); } catch(e){ toast(errMsg(e)); }
