@@ -86,6 +86,10 @@ async function getOrCreateDirectoryMeetupId(db: ReturnType<typeof admin>): Promi
  * plus their recent non-test meetups so returning friends can pick their name and see/reuse their info & free hours.
  */
 export async function GET(req: Request) {
+  const sbUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  if (!sbUrl || sbUrl.includes('example.supabase.co')) {
+    return NextResponse.json({ profiles: [], recentMeetups: [] });
+  }
   const url = new URL(req.url);
   const onlyName = url.searchParams.get('name')?.trim();
   const onlyEmail = url.searchParams.get('email')?.trim().toLowerCase();

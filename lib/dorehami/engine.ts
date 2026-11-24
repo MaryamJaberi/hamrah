@@ -491,8 +491,10 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   }
   async function loadKnownProfiles(){
     if (profilesLoaded) return KNOWN_PROFILES;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 2500);
     try {
-      const r = await fetch("/api/d/profiles");
+      const r = await fetch("/api/d/profiles", { signal: ctrl.signal });
       if (r.ok) {
         const j = await r.json();
         KNOWN_PROFILES = j.profiles || [];
@@ -500,6 +502,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         profilesLoaded = true;
       }
     } catch(e){}
+    finally { clearTimeout(timer); }
     return KNOWN_PROFILES;
   }
   const LABEL = {
