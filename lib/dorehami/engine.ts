@@ -661,9 +661,20 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               </div>
             ` : `
               <b style="font-size:13.5px;display:block;margin-bottom:4px">🔐 ورود به حساب همراه</b>
-              <p class="tiny muted" style="margin:0 0 10px">با ورود (گوگل، ایمیل یا شماره موبایل) پروفایل و ایونت‌هایت در همهٔ دستگاه‌ها ذخیره می‌شود:</p>
-              <a href="/login?next=${encodeURIComponent(location.pathname + location.search)}" data-ext="1" data-login="1" class="btn sm block">ورود با گوگل، ایمیل یا موبایل ←</a>
+              <p class="tiny muted" style="margin:0 0 10px">با ورود (ایمیل یا شماره موبایل) پروفایل و ایونت‌هایت در همهٔ دستگاه‌ها ذخیره می‌شود:</p>
+              <a href="/login?next=${encodeURIComponent(location.pathname + location.search)}" data-ext="1" data-login="1" class="btn sm block">ورود / ثبت‌نام در همراه ←</a>
             `}
+            ${KNOWN_PROFILES.length ? `
+              <details style="margin-top:10px;padding-top:8px;border-top:1px dashed #d8caec">
+                <summary class="tiny" style="cursor:pointer;color:var(--p);font-weight:700">پروفایل‌های ذخیره‌شدهٔ دوستان (${KNOWN_PROFILES.map(x=>esc(x.name)).join("، ")})</summary>
+                <div class="prof-grid" style="margin-top:6px">
+                  ${KNOWN_PROFILES.map(kp => `
+                    <div class="prof-btn ${(p && p.name===kp.name)?"on":""}" data-pmpick="${esc(kp.name)}">
+                      <div class="av-sm" style="background:${colorOf(kp.name)}">${esc(kp.name.slice(0,1))}</div>
+                      <div class="nm">${esc(kp.name)}</div>
+                    </div>`).join("")}
+                </div>
+              </details>` : ""}
           </div>
 
           ${p ? `
