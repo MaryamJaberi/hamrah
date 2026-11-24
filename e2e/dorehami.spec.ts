@@ -17,7 +17,6 @@ test('guest: create → answer → result → finalize → delete', async ({ pag
   page.on('dialog', (d) => (d.message().includes('واتس') ? d.dismiss() : d.accept()));
   await page.goto('/d');
   await page.locator('#c_title').fill('دورهمی تست e2e');
-  await page.locator('#c_org').fill('تست');
   await page.locator('#seg_fixed').click();
   await page.locator('#c_go_open').click();
   await expect(page.getByRole('heading', { name: 'آماده است!' })).toBeVisible();
@@ -142,14 +141,19 @@ test('creator: location/area, expiry date, edit details, archive/unarchive, and 
   page.on('dialog', (d) => (d.message().includes('واتس') ? d.dismiss() : d.accept()));
   await page.goto('/d');
   await page.locator('#c_title').fill('ایونت تست مدیریت');
-  await page.locator('#c_org').fill('مریم تست');
-  // Choose suggested area/city
+  // Choose suggested area/city & private link + lifestyle filters
   await page.locator('#loc_area').click();
   await page.locator('#c_loc_city').selectOption('delft');
   await page.locator('#c_loc_place').fill('اطراف مرکز شهر');
+  await page.locator('#vis_private').click();
+  await page.locator('[data-smoke="no_smoke"]').click();
+  await page.locator('[data-alc="no_alcohol"]').click();
   await page.locator('#c_go_open').click();
   await expect(page.getByRole('heading', { name: 'آماده است!' })).toBeVisible();
   await expect(page.getByText(/محدودهٔ پیشنهادی.*دلفت.*اطراف مرکز شهر/)).toBeVisible();
+  await expect(page.getByText(/فقط با لینک خصوصی/)).toBeVisible();
+  await expect(page.getByText(/بدون سیگار/)).toBeVisible();
+  await expect(page.getByText(/بدون الکل/)).toBeVisible();
 
   // Go to result page with admin token
   const url = page.url();

@@ -74,6 +74,17 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   };
   const fmtOpt = o => `${fmtDate(o.d)}${o.t ? " · ساعت " + fa(o.t) : ""}`;
   const COLORS = ["#5b2a86","#c2185b","#00796b","#ef6c00","#3949ab","#6d4c41","#2e7d32","#ad1457","#0277bd","#7b1fa2"];
+  const fmtAudience = (aud, womenOnly = false) => {
+    const badges: string[] = [];
+    if (aud?.visibility === "private") badges.push("🔒 فقط با لینک خصوصی");
+    else if (aud?.visibility === "nearby") badges.push("📍 فقط اطراف من");
+    if (aud?.smoke === "no_smoke") badges.push("🚭 بدون سیگار");
+    else if (aud?.smoke === "ok") badges.push("🚬 با سیگار اوکیم");
+    if (aud?.alcohol === "no_alcohol") badges.push("🥤 بدون الکل");
+    else if (aud?.alcohol === "ok") badges.push("🍷 با الکل اوکیم");
+    if (womenOnly) badges.push("👩 فقط خانم‌ها");
+    return badges;
+  };
   const colorOf = s => COLORS[[...String(s)].reduce((a,c)=>a+c.charCodeAt(0),0) % COLORS.length];
 
   /* ============ places (station cities) ============ */
@@ -565,14 +576,14 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   function topbar(){
     const cached = store.get("dh_last");
     const myName = USER?.name || cached?.name || "";
-    const myEmail = cached?.email || cached?.data?.email || "";
+    const retUrl = encodeURIComponent(location.pathname + location.search);
     return `<div class="topbar">
       <a href="/d" style="display:flex;align-items:center;gap:6px">🌿 <b>دورهمی همراه</b></a>
-      <div class="row" style="gap:8px">
-        <button type="button" class="btn ghost sm" id="tb_prof_btn" style="padding:5px 11px;font-size:12.5px">
-          ${myName ? `👤 پروفایل ${esc(myName)}${myEmail?" ✓":""}` : `👤 پروفایل من / اتصال جیمیل`}
-        </button>
-        ${USER ? `<a href="/out" data-ext="1" style="font-size:12.5px">بریم بیرون ←</a>` : ""}
+      <div class="row" style="gap:6px">
+        ${myName ? `<button type="button" class="btn line sm" id="tb_prof_btn" style="padding:5px 10px;font-size:12.5px">👤 ${esc(myName)}</button>` : ""}
+        ${USER
+          ? `<a href="/out" data-ext="1" style="font-size:12.5px">بریم بیرون ←</a>`
+          : `<a href="/login?next=${retUrl}" data-ext="1" data-login="1" class="btn ghost sm" style="padding:5px 11px;font-size:12.5px">🔐 ورود / ثبت‌نام</a>`}
       </div>
     </div>`;
   }
@@ -639,24 +650,17 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             <button type="button" class="btn line sm" id="pm_close">✕ بستن</button>
           </div>
 
-          <div style="background:#f7f5ff;border:1.5px solid #e2dcf7;border-radius:14px;padding:11px;margin-bottom:12px">
-            <b style="font-size:13px;display:block;margin-bottom:6px">📧 اتصال به جیمیل / ایمیل (برای دائمی شدن پروفایل در همهٔ گوشی‌ها):</b>
-            <div class="row" style="gap:6px;flex-wrap:wrap">
-              <input type="email" id="pm_email" class="ltr" style="flex:1.4;min-width:170px" placeholder="you@gmail.com" value="${esc(emailVal)}">
-              <input type="text" id="pm_name" style="flex:1;min-width:110px" placeholder="نام تو (مثلاً مریم)" value="${esc(p?.name || "")}">
-              <button type="button" class="btn sm" id="pm_load_btn">بارگذاری / اتصال</button>
-            </div>
-            ${KNOWN_PROFILES.length ? `
-              <details style="margin-top:8px">
-                <summary class="tiny" style="cursor:pointer;color:var(--p);font-weight:700">یا انتخاب سریع از پروفایل‌های قبلی (${KNOWN_PROFILES.map(x=>esc(x.name)).join("، ")})</summary>
-                <div class="prof-grid" style="margin-top:6px">
-                  ${KNOWN_PROFILES.map(kp => `
-                    <div class="prof-btn ${(p && p.name===kp.name)?"on":""}" data-pmpick="${esc(kp.name)}">
-                      <div class="av-sm" style="background:${colorOf(kp.name)}">${esc(kp.name.slice(0,1))}</div>
-                      <div class="nm">${esc(kp.name)}</div>
-                    </div>`).join("")}
-                </div>
-              </details>` : ""}
+          <div style="background:#f7f5ff;border:1.5px solid #e2dcf7;border-radius:14px;padding:12px;margin-bottom:12px">
+            ${USER ? `
+              <div class="row" style="justify-content:space-between;align-items:center">
+                <span style="font-size:13.5px;font-weight:700;color:var(--ok)">✓ وارد شده با حساب همراه (${esc(USER.name || "")})</span>
+                <a href="/out" data-ext="1" class="tiny" style="font-weight:700">رفتن به همراه ←</a>
+              </div>
+            ` : `
+              <b style="font-size:13.5px;display:block;margin-bottom:4px">🔐 ورود به حساب همراه</b>
+              <p class="tiny muted" style="margin:0 0 10px">با ورود (گوگل، ایمیل یا شماره موبایل) پروفایل و ایونت‌هایت در همهٔ دستگاه‌ها ذخیره می‌شود:</p>
+              <a href="/login?next=${encodeURIComponent(location.pathname + location.search)}" data-ext="1" data-login="1" class="btn sm block">ورود با گوگل، ایمیل یا موبایل ←</a>
+            `}
           </div>
 
           ${p ? `
@@ -929,7 +933,10 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         <div id="create_pane">
           <div style="margin-bottom:14px">
             <label class="f" style="margin-top:2px;font-weight:700">موضوع یا ایدهٔ قرار چیه؟</label>
-            <input type="text" id="c_title" maxlength="80" placeholder="مثلاً: کافه و گپ، دویدن صبحگاهی، بردگیم…" style="font-size:15px;padding:10px 12px">
+            <input type="text" id="c_title" list="c_idea_datalist" maxlength="80" placeholder="انتخاب کن یا خودت بنویس: کافه، دویدن، بردگیم…" style="font-size:15px;padding:10px 12px">
+            <datalist id="c_idea_datalist">
+              ${EVENT_IDEAS.map(idea => `<option value="${esc(idea.title)}">${esc(idea.label)}</option>`).join("")}
+            </datalist>
             <div class="quick-ideas" id="c_idea_chips">
               ${EVENT_IDEAS.map(idea => `
                 <span class="qidea" data-idea="${idea.k}">${idea.icon} ${esc(idea.label)}</span>
@@ -937,17 +944,11 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             </div>
           </div>
 
-          <div class="row" style="gap:10px;margin-bottom:14px;align-items:flex-end;flex-wrap:wrap">
-            <div style="flex:1;min-width:130px">
-              <label class="f" style="margin-top:0">برگزارکننده</label>
-              <input type="text" id="c_org" maxlength="40" placeholder="مثلاً مریم" value="${esc(myName)}" style="height:42px">
-            </div>
-            <div style="flex:1.2;min-width:160px">
-              <label class="f" style="margin-top:0">تعداد هم‌پایان</label>
-              <div class="seg sm" style="margin:0;height:42px;display:flex;align-items:center">
-                <button type="button" id="c_tgt_group" class="on" style="height:34px;display:flex;align-items:center;justify-content:center;white-space:nowrap">👥 گروهی</button>
-                <button type="button" id="c_tgt_pair" style="height:34px;display:flex;align-items:center;justify-content:center;white-space:nowrap">👯‍♀️ دونفره</button>
-              </div>
+          <div style="margin-bottom:14px">
+            <label class="f" style="margin-top:0">تعداد هم‌پایان</label>
+            <div class="seg sm" style="margin:0;height:40px;display:flex;align-items:center">
+              <button type="button" id="c_tgt_group" class="on" style="height:32px;display:flex;align-items:center;justify-content:center;white-space:nowrap">👥 گروهی</button>
+              <button type="button" id="c_tgt_pair" style="height:32px;display:flex;align-items:center;justify-content:center;white-space:nowrap">👯‍♀️ دونفره (۱ به ۱)</button>
             </div>
           </div>
 
@@ -1006,9 +1007,28 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             <input type="text" id="c_loc_place" maxlength="140" placeholder="مثلاً: اطراف ایستگاه مرکزی، نزدیک پارک، مرکز شهر…">
           </div>
 
+          <div style="margin-bottom:14px">
+            <label class="f" style="margin-top:0">👁️ چه کسانی این ایونت را ببینند؟</label>
+            <div class="seg sm" style="margin:0">
+              <button type="button" id="vis_public" class="on" style="white-space:nowrap">🌍 عمومی</button>
+              <button type="button" id="vis_nearby" style="white-space:nowrap">📍 اطراف من</button>
+              <button type="button" id="vis_private" style="white-space:nowrap">🔒 لینک خصوصی</button>
+            </div>
+            <div class="tiny" style="color:var(--muted);margin-top:4px;margin-bottom:8px" id="c_vis_hint">
+              همه در لیست ایونت‌ها می‌بینند و می‌توانند اعلام حضور کنند.
+            </div>
+            <div class="chips" id="c_aud_chips" style="gap:6px">
+              <span class="chip sm" data-smoke="no_smoke">🚭 بدون سیگار</span>
+              <span class="chip sm" data-smoke="ok">🚬 سیگار اوکیم</span>
+              <span class="chip sm" data-alc="no_alcohol">🥤 بدون الکل</span>
+              <span class="chip sm" data-alc="ok">🍷 الکل اوکیم</span>
+              <span class="chip sm" id="c_wo_chip">👩 فقط خانم‌ها</span>
+            </div>
+          </div>
+
           <details style="margin-bottom:14px;background:#faf9fe;border-radius:12px;border:1.5px dashed #ded7f2;padding:9px 12px">
             <summary style="cursor:pointer;color:var(--p);font-size:13px;font-weight:700;user-select:none;list-style:none;display:flex;align-items:center;justify-content:space-between">
-              <span>⚙️ تنظیمات بیشتر (توضیح، تاریخ انقضا، فقط خانم‌ها)</span>
+              <span>⚙️ تنظیمات بیشتر (توضیح، تاریخ انقضا، نام برگزارکننده)</span>
               <span style="font-size:11px;opacity:0.7">▼</span>
             </summary>
             <div style="margin-top:10px;padding-top:8px;border-top:1px solid #eeeaf8">
@@ -1018,7 +1038,8 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               <input type="date" id="c_expires" style="margin-bottom:4px">
               <span class="tiny" id="c_expires_lbl" style="color:var(--p);font-weight:600;display:block;margin-bottom:4px"></span>
               <span class="tiny" style="color:var(--muted);display:block;margin-bottom:10px">بعد از این تاریخ، ایونت خودکار از دید عموم برداشته می‌شود.</span>
-              <div class="opt" id="c_wo"><span class="e">👩</span><div><b>فقط برای خانم‌ها</b></div></div>
+              <label class="f">نام نمایشی برگزارکننده (اختیاری)</label>
+              <input type="text" id="c_org" maxlength="40" placeholder="مثلاً مریم" value="${esc(myName)}">
             </div>
           </details>
 
@@ -1236,8 +1257,43 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     if ($("#loc_area")) $("#loc_area").onclick = () => setLocMode("area");
     if ($("#loc_exact")) $("#loc_exact").onclick = () => setLocMode("exact");
 
+    let visMode = "public";
+    let smokePref = "any";
+    let alcPref = "any";
+    const setVisMode = (mode) => {
+      visMode = mode;
+      $("#vis_public")?.classList.toggle("on", mode === "public");
+      $("#vis_nearby")?.classList.toggle("on", mode === "nearby");
+      $("#vis_private")?.classList.toggle("on", mode === "private");
+      if ($("#c_vis_hint")) {
+        $("#c_vis_hint").textContent = mode === "public"
+          ? "همه در لیست ایونت‌ها می‌بینند و می‌توانند اعلام حضور کنند."
+          : mode === "nearby"
+            ? "به کاربرانی که دور و بر همین شهر/محدوده هستند نمایش داده می‌شود."
+            : "در لیست عمومی نشان داده نمی‌شود؛ فقط کسانی که لینک یا کد را برایشان بفرستی می‌بینند.";
+      }
+    };
+    if ($("#vis_public")) $("#vis_public").onclick = () => setVisMode("public");
+    if ($("#vis_nearby")) $("#vis_nearby").onclick = () => setVisMode("nearby");
+    if ($("#vis_private")) $("#vis_private").onclick = () => setVisMode("private");
+
+    $("#c_aud_chips")?.querySelectorAll("[data-smoke]").forEach(el => {
+      el.onclick = () => {
+        const v = el.dataset.smoke;
+        smokePref = smokePref === v ? "any" : v;
+        $("#c_aud_chips").querySelectorAll("[data-smoke]").forEach(x => x.classList.toggle("on", x.dataset.smoke === smokePref));
+      };
+    });
+    $("#c_aud_chips")?.querySelectorAll("[data-alc]").forEach(el => {
+      el.onclick = () => {
+        const v = el.dataset.alc;
+        alcPref = alcPref === v ? "any" : v;
+        $("#c_aud_chips").querySelectorAll("[data-alc]").forEach(x => x.classList.toggle("on", x.dataset.alc === alcPref));
+      };
+    });
+
     let wo = false;
-    $("#c_wo").onclick = e => { wo = !wo; e.currentTarget.classList.toggle("on", wo); };
+    if ($("#c_wo_chip")) $("#c_wo_chip").onclick = e => { wo = !wo; e.currentTarget.classList.toggle("on", wo); };
 
     let currentTarget = "group";
     const updateTargetUI = (tgt) => {
@@ -1330,12 +1386,16 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             };
           }
         }
+        const audPayload = (visMode !== "public" || smokePref !== "any" || alcPref !== "any")
+          ? { visibility: visMode, smoke: smokePref, alcohol: alcPref }
+          : null;
         const r = await rpc("dh_create", {p_title:title, p_note:note, p_organizer:orgName, p_options:good, p_women_only:wo});
-        if (expDate || locPayload) {
+        if (expDate || locPayload || audPayload) {
           try {
             const editBody: any = { code: r.code, admin_token: r.admin_token, action: "edit" };
             if (expDate) editBody.expires_at = expDate;
             if (locPayload) editBody.location = locPayload;
+            if (audPayload) editBody.audience = audPayload;
             await fetch("/api/d/manage", {
               method: "POST",
               headers: { "content-type": "application/json" },
@@ -1343,7 +1403,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             });
           } catch(e){}
         }
-        store.set("dh_"+r.code, {title, organizer_name: orgName, admin:r.admin_token, location: locPayload});
+        store.set("dh_"+r.code, {title, organizer_name: orgName, admin:r.admin_token, location: locPayload, audience: audPayload});
         profilesLoaded = false;
         go(`/d/${r.code}?admin=${r.admin_token}&new=1`);
       } catch(e){
@@ -1411,11 +1471,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const expDate = M.expires_at || M.final?.expires_at;
     const isExpired = Boolean(M.is_expired || isDateExpired(expDate));
     const locLine = fmtLocation(M.final?.location);
+    const audBadges = fmtAudience(M.final?.audience, Boolean(M.women_only));
     app.innerHTML = topbar() + `
       <header class="top"><span class="logo">${detectActivityIcon(M.title)}</span><div><b>${esc(M.title)}</b><small>ساخته شد · کد: <span class="ltr">#${esc(M.code)}</span></small></div></header>
       ${isArchived ? `<div class="okbox" style="margin:8px 0;background:#fff8e6;border-color:#f6d899;color:#8a5a00">📦 <b>این دورهمی آرشیو شده است</b> (فقط برای افراد دارای لینک قابل مشاهده است).</div>` : ""}
       ${isExpired ? `<div class="okbox" style="margin:8px 0;background:#fff0f0;border-color:#ffd0d0;color:#c92a2a">⏰ <b>مهلت یا تاریخ انقضای این دورهمی به پایان رسیده است.</b></div>` : (expDate ? `<div class="tiny" style="color:var(--muted);margin-bottom:6px">⏰ مهلت اعلام حضور تا: <b>${fmtDate(expDate)}</b></div>` : "")}
       ${locLine ? `<div class="okbox" style="margin:8px 0;background:#eefbf6;border-color:#b7ebd6;color:#0e5f4d">${esc(locLine)}</div>` : ""}
+      ${audBadges.length ? `<div class="row" style="gap:6px;margin:6px 0 8px">${audBadges.map(b => `<span class="pill sm" style="background:#f3f0ff;color:var(--p)">${esc(b)}</span>`).join("")}</div>` : ""}
       <div class="card"><div class="row" style="gap:10px;margin-bottom:6px"><span class="hero-e" style="font-size:34px">🎉</span><h1 style="margin:0">آماده است!</h1></div>
         <p>کد یا لینک زیر را برای دوستانت بفرست تا ساعت‌ها و محدودهٔ مکانشان را روی نقشه بزنند:</p>${shareButtons()}</div>
       <div class="card"><h2>🔑 لینک مخصوص خودت (برگزارکننده)</h2>
@@ -1924,11 +1986,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const expDate = M.expires_at || M.final?.expires_at;
     const isExpired = Boolean(M.is_expired || isDateExpired(expDate));
     const locLine = fmtLocation(M.final?.location);
+    const audBadges = fmtAudience(M.final?.audience, Boolean(M.women_only));
     app.innerHTML = topbar() + `
       <header class="top"><span class="logo">${detectActivityIcon(M.title)}</span><div><b>${esc(M.title)}</b><small>${fa(A.n)} نفر فرم را پر کرده‌اند${M.organizer_name?" · برگزارکننده: "+esc(M.organizer_name):""}</small></div></header>
       ${isArchived ? `<div class="okbox" style="margin:8px 0;background:#fff8e6;border-color:#f6d899;color:#8a5a00">📦 <b>این دورهمی آرشیو شده است</b> (از لیست عمومی پنهان است اما با لینک در دسترس است).</div>` : ""}
       ${isExpired ? `<div class="okbox" style="margin:8px 0;background:#fff0f0;border-color:#ffd0d0;color:#c92a2a">⏰ <b>مهلت اعلام حضور یا تاریخ انقضای این دورهمی به پایان رسیده است.</b></div>` : (expDate ? `<div class="tiny" style="color:var(--muted);margin-bottom:6px">⏰ مهلت اعلام حضور تا: <b>${fmtDate(expDate)}</b></div>` : "")}
       ${locLine ? `<div class="okbox" style="margin:8px 0;background:#eefbf6;border-color:#b7ebd6;color:#0e5f4d">${esc(locLine)}</div>` : ""}
+      ${audBadges.length ? `<div class="row" style="gap:6px;margin:6px 0 8px">${audBadges.map(b => `<span class="pill sm" style="background:#f3f0ff;color:var(--p)">${esc(b)}</span>`).join("")}</div>` : ""}
       ${detectTargetType(M.title, M.note) === "pair" ? `<div class="pill sm" style="background:#fff0f6;color:#d63384;display:inline-block;margin-bottom:8px">👯‍♀️ قرار همراهی دو‌نفره (هم‌پا)</div>` : ""}
       ${M.note ? `<div class="okbox" style="margin:8px 0;background:#f6f4fe;border-color:#d7cbfa">💬 <b>پیام ${esc(M.organizer_name || "برگزارکننده")}:</b> ${esc(M.note.replace(/^\[همراه دو‌نفره\]\s*/, ""))}</div>` : ""}
       ${isFinalized(M.final) ? finalCard(M.final) : ""}
@@ -2313,6 +2377,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       if (M.final?.archived || M.is_archived) fin.archived = true;
       if (M.final?.expires_at || M.expires_at) fin.expires_at = M.final?.expires_at || M.expires_at;
       if (M.final?.location) fin.location = M.final.location;
+      if (M.final?.audience) fin.audience = M.final.audience;
       try { await rpc("dh_finalize", {p_code:CODE, p_admin:ADMIN, p_final:fin}); toast("قطعی شد ✓");
         const city = (cityByKey(fin.city)||{}).fa || "";
         const txt = `✅ «${M.title}» قطعی شد:\n📅 ${fmtDate(fin.d)} ساعت ${fin.t}\n📍 ${fin.venue}${city?" — "+city:""}\nجزئیات و تقویم: ${linkFor(CODE)}`;
@@ -2325,6 +2390,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       if (M.final?.archived || M.is_archived) keepMeta.archived = true;
       if (M.final?.expires_at || M.expires_at) keepMeta.expires_at = M.final?.expires_at || M.expires_at;
       if (M.final?.location) keepMeta.location = M.final.location;
+      if (M.final?.audience) keepMeta.audience = M.final.audience;
       const nextFinal = Object.keys(keepMeta).length ? keepMeta : null;
       try { await rpc("dh_finalize", {p_code:CODE, p_admin:ADMIN, p_final:nextFinal}); M.final = nextFinal; profilesLoaded = false; resultPage(); } catch(e){ toast(errMsg(e)); }
     };

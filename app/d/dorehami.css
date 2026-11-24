@@ -139,7 +139,8 @@
 .dh .city-tag i:hover{opacity:1}
 .dh .tl-row{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#f8f6ff;border:1px solid #e1daf7;border-radius:11px;padding:6px 10px;margin-top:6px;font-size:13px}
 .dh .seg.sm button{padding:7px 10px;font-size:12.5px;border-radius:9px}
-.dh .quick-ideas{display:flex;flex-wrap:wrap;gap:6px;padding:2px 0 4px;margin:6px 0 2px}
+.dh .quick-ideas{display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:2px 1px 6px;margin:6px 0 2px}
+.dh .quick-ideas::-webkit-scrollbar{display:none}
 .dh .qidea{flex:none;white-space:nowrap;font-size:12.5px;padding:6px 13px;border-radius:20px;background:#f5f3ff;color:var(--p);cursor:pointer;font-weight:600;transition:all .15s ease;border:1px solid #e5dff7;user-select:none;display:inline-flex;align-items:center;gap:4px}
 .dh .qidea:hover{background:#ede6fb;border-color:var(--p2);transform:translateY(-1px)}
 .dh .qidea.on{background:var(--p);color:#fff;border-color:var(--p);box-shadow:0 2px 8px rgba(108,92,231,.25)}

@@ -102,8 +102,23 @@ export async function POST(req: Request) {
         }
       }
 
-      const newFinal: Record<string, any> = { ...currentFinal, expires_at, location };
+      let audience: Record<string, any> | null = currentFinal.audience ?? null;
+      if (body.audience !== undefined) {
+        if (body.audience && typeof body.audience === 'object') {
+          const vis = ['public', 'nearby', 'private'].includes(body.audience.visibility) ? body.audience.visibility : 'public';
+          const smoke = ['any', 'no_smoke', 'ok'].includes(body.audience.smoke) ? body.audience.smoke : 'any';
+          const alcohol = ['any', 'no_alcohol', 'ok'].includes(body.audience.alcohol) ? body.audience.alcohol : 'any';
+          audience = (vis === 'public' && smoke === 'any' && alcohol === 'any')
+            ? null
+            : { visibility: vis, smoke, alcohol };
+        } else {
+          audience = null;
+        }
+      }
+
+      const newFinal: Record<string, any> = { ...currentFinal, expires_at, location, audience };
       if (!location) delete newFinal.location;
+      if (!audience) delete newFinal.audience;
       const updates: Record<string, any> = {
         title,
         note,
@@ -129,6 +144,7 @@ export async function POST(req: Request) {
         options,
         expires_at,
         location,
+        audience,
         is_archived: Boolean(m.is_archived || currentFinal.archived),
       });
     }
