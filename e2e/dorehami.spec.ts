@@ -18,7 +18,8 @@ test('guest: create → answer → result → finalize → delete', async ({ pag
   await page.goto('/d');
   await page.locator('#c_title').fill('دورهمی تست e2e');
   await page.locator('#c_org').fill('تست');
-  await page.locator('#c_go').click();
+  await page.locator('#seg_fixed').click();
+  await page.locator('#c_go_open').click();
   await expect(page.getByRole('heading', { name: 'آماده است!' })).toBeVisible();
   await page.getByRole('link', { name: /فرم خودم را پر کنم/ }).click();
 
@@ -55,7 +56,8 @@ test('guest: second meetup remembers answers — name → days → review', asyn
   const make = async (title: string) => {
     await page.goto('/d');
     await page.locator('#c_title').fill(title);
-    await page.locator('#c_go').click();
+    await page.locator('#seg_fixed').click();
+    await page.locator('#c_go_open').click();
     await page.getByRole('link', { name: /فرم خودم را پر کنم/ }).click();
   };
   const cleanup = async () => {
@@ -156,20 +158,32 @@ test('creator: expiry date, edit details, archive/unarchive, and delete', async 
   await page.goto(`/d/${code}?admin=${adminToken}&tab=share`);
   await expect(page.locator('#a_btn_edit')).toBeVisible();
 
-  // Edit title and note
+  // Edit title and expiry date
   await page.locator('#a_btn_edit').click();
   await expect(page.locator('#a_edit_box')).toBeVisible();
   await page.locator('#ae_title').fill('ایونت تست ویرایش‌شده');
+  await page.locator('#ae_expires').fill('2026-12-30');
   await page.locator('#ae_save').click();
   await expect(page.getByText('تغییرات ذخیره شد')).toBeVisible();
   await expect(page.getByText('ایونت تست ویرایش‌شده')).toBeVisible();
+  await expect(page.getByText('✅ قطعی شد')).toHaveCount(0);
 
-  // Archive meetup
+  // Verify edit & expiry persist across full reload
+  await page.reload();
+  await expect(page.getByText('ایونت تست ویرایش‌شده')).toBeVisible();
+  await expect(page.getByText(/مهلت اعلام حضور تا/)).toBeVisible();
+  await expect(page.getByText('✅ قطعی شد')).toHaveCount(0);
+
+  // Archive meetup & verify persistence across reload
   await page.locator('[data-tab=share]').click();
   await page.locator('#a_btn_archive').click();
   await expect(page.getByText(/این دورهمی آرشیو شده است/)).toBeVisible();
+  await expect(page.getByText('✅ قطعی شد')).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByText(/این دورهمی آرشیو شده است/)).toBeVisible();
 
   // Unarchive meetup
+  await page.locator('[data-tab=share]').click();
   await page.locator('#a_btn_archive').click();
   await expect(page.getByText('دورهمی فعال شد')).toBeVisible();
 

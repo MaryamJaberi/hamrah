@@ -43,7 +43,20 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     return "یک مشکلی پیش آمد: " + m;
   }
   const linkFor = code => `${location.origin}/d/${code}`;
-  const fmtDate = d => { try { return new Intl.DateTimeFormat("fa-IR-u-ca-gregory",{weekday:"long",day:"numeric",month:"long"}).format(new Date(d+"T12:00:00")); } catch(e){ return d; } };
+  const fmtDate = d => {
+    try {
+      if (!d) return "";
+      const day = String(d).slice(0, 10);
+      return new Intl.DateTimeFormat("fa-IR-u-ca-gregory",{weekday:"long",day:"numeric",month:"long"}).format(new Date(day+"T12:00:00"));
+    } catch(e){ return String(d || ""); }
+  };
+  const isFinalized = f => Boolean(f && (f.d || f.venue || f.city));
+  const isDateExpired = exp => {
+    if (!exp) return false;
+    const s = String(exp).trim();
+    const ms = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s + "T23:59:59.000Z").getTime() : new Date(s).getTime();
+    return !Number.isNaN(ms) && ms < Date.now();
+  };
   const fmtOpt = o => `${fmtDate(o.d)}${o.t ? " · ساعت " + fa(o.t) : ""}`;
   const COLORS = ["#5b2a86","#c2185b","#00796b","#ef6c00","#3949ab","#6d4c41","#2e7d32","#ad1457","#0277bd","#7b1fa2"];
   const colorOf = s => COLORS[[...String(s)].reduce((a,c)=>a+c.charCodeAt(0),0) % COLORS.length];
@@ -808,24 +821,25 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     if (hasDismissed) {
       return `
         <div style="text-align:center;padding:10px 4px;margin-top:6px">
-          <span class="tiny" style="color:var(--muted)">👤 پاسخ‌هایت روی همین گوشی ذخیره است · </span>
+          <span class="tiny" style="color:var(--muted)">👤 تنظیماتت روی همین گوشی ذخیره است · </span>
           <a href="/login?next=${encodeURIComponent(location.pathname + location.search)}" class="tiny" style="color:var(--p);font-weight:700" data-ext="1" data-login="1">اتصال به حساب همراه</a>
         </div>
       `;
     }
+    const my = store.get("dh_"+CODE) || {};
     const returnUrl = encodeURIComponent(location.pathname + location.search);
     return `
       <div class="card" id="post_rsvp_auth_box" style="background:linear-gradient(135deg, #fbfaff 0%, #f4f0fd 100%);border:1.5px solid #ded5f7;border-radius:14px;padding:14px 16px;margin:12px 0">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-          <span style="font-size:22px">📬</span>
+          <span style="font-size:20px">📬</span>
           <b style="font-size:15px">دوست داری حسابت را ذخیره کنی؟</b>
           <span class="pill sm" style="background:#fff;color:var(--p)">اختیاری</span>
         </div>
         <p class="muted tiny" style="margin:0 0 12px;line-height:1.6">
-          پاسخ‌هایت ثبت شد! اگر می‌خواهی حسابت ذخیره شود تا وقتی برنامه قطعی شد باخبر شوی و در گفتگوی گروه شرکت کنی، می‌توانی وارد شوی (اجباری نیست):
+          ${my.edit ? "پاسخ‌هایت ثبت شد! " : ""}اگر می‌خواهی حسابت ذخیره شود تا وقتی برنامه قطعی شد باخبر شوی و در گفتگوی گروه شرکت کنی، می‌توانی وارد شوی (اجباری نیست):
         </p>
-        <div class="row" style="gap:8px;flex-wrap:wrap">
-          <a href="/login?next=${returnUrl}" class="btn sm" data-ext="1" data-login="1">🔐 ذخیره و ورود با ایمیل یا موبایل</a>
+        <div class="row" style="gap:8px;flex-wrap:wrap;justify-content:flex-start">
+          <a href="/login?next=${returnUrl}" class="btn ghost sm" data-ext="1" data-login="1">🔐 ذخیره و ورود با ایمیل یا موبایل</a>
           <button type="button" class="btn line sm" id="post_rsvp_dismiss_btn">نه، فقط روی همین گوشی بماند</button>
         </div>
       </div>
@@ -855,6 +869,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
 
   /* ============ home / create ============ */
   async function homePage(){
+    document.title = "دورهمی · همراه";
     const q = new URLSearchParams(location.search);
     const sharedUser = q.get("u");
     let mine = localItems();
@@ -869,10 +884,14 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     }
     for (const rm of RECENT_MEETUPS) {
       const ex = mine.find(x => x.code === rm.code);
-      if (!ex) mine.push({code: rm.code, title: rm.title, organizer_name: rm.organizer_name, count: rm.count, final: rm.final});
+      if (!ex) mine.push({code: rm.code, title: rm.title, organizer_name: rm.organizer_name, count: rm.count, final: rm.final, expires_at: rm.expires_at, is_archived: rm.is_archived});
       else {
-        if (!ex.organizer_name && rm.organizer_name) ex.organizer_name = rm.organizer_name;
-        if (ex.count == null && rm.count != null) ex.count = rm.count;
+        if (rm.title) ex.title = rm.title;
+        if (rm.organizer_name) ex.organizer_name = rm.organizer_name;
+        if (rm.count != null) ex.count = rm.count;
+        if (rm.final !== undefined) ex.final = rm.final;
+        if (rm.expires_at !== undefined) ex.expires_at = rm.expires_at;
+        if (rm.is_archived !== undefined) ex.is_archived = rm.is_archived;
       }
     }
     if (dead) return;
@@ -884,8 +903,8 @@ export function mount(root: HTMLElement, opts: DhOptions) {
 
     app.innerHTML = topbar() + `
       <div class="card">
-        <h1>✨ یک دورهمی بساز</h1>
-        <p class="muted" style="margin-bottom:14px;font-size:13px">قراری که دوست داری را ثبت کن تا دوستانت زمان و مکانشان را هماهنگ کنند:</p>
+        <h1 id="home_hero_h1">✨ یک دورهمی بساز</h1>
+        <p class="muted" id="home_hero_sub" style="margin-bottom:14px;font-size:13px">قراری که دوست داری را ثبت کن تا دوستانت زمان و مکانشان را هماهنگ کنند:</p>
 
         <div class="seg" style="margin-bottom:14px">
           <button type="button" id="mode_create_tab" class="on">✨ ساخت ایونت</button>
@@ -908,11 +927,11 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               <label class="f" style="margin-top:0">برگزارکننده</label>
               <input type="text" id="c_org" maxlength="40" placeholder="مثلاً مریم" value="${esc(myName)}" style="height:42px">
             </div>
-            <div style="flex:1.4;min-width:170px">
+            <div style="flex:1.2;min-width:160px">
               <label class="f" style="margin-top:0">تعداد هم‌پایان</label>
               <div class="seg sm" style="margin:0;height:42px;display:flex;align-items:center">
-                <button type="button" id="c_tgt_group" class="on" style="height:34px;display:flex;align-items:center;justify-content:center">👥 گروهی</button>
-                <button type="button" id="c_tgt_pair" style="height:34px;display:flex;align-items:center;justify-content:center">👯‍♀️ دونفره (۱ به ۱)</button>
+                <button type="button" id="c_tgt_group" class="on" style="height:34px;display:flex;align-items:center;justify-content:center;white-space:nowrap">👥 گروهی</button>
+                <button type="button" id="c_tgt_pair" style="height:34px;display:flex;align-items:center;justify-content:center;white-space:nowrap">👯‍♀️ دونفره</button>
               </div>
             </div>
           </div>
@@ -920,8 +939,8 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           <div style="margin-bottom:14px">
             <label class="f" style="margin-top:0">زمان‌بندی دورهمی</label>
             <div class="seg sm" style="margin:0">
-              <button type="button" id="seg_open" class="on">🙋‍♀️ زمان شناور (پیشنهادی)</button>
-              <button type="button" id="seg_fixed">📅 روز و ساعت مشخص</button>
+              <button type="button" id="seg_open" class="on" style="white-space:nowrap">🙋‍♀️ زمان شناور</button>
+              <button type="button" id="seg_fixed" style="white-space:nowrap">📅 تاریخ مشخص</button>
             </div>
             <div class="tiny" style="color:var(--muted);margin-top:4px" id="c_timing_hint">
               دوستان ساعت‌های آزادشان را می‌گویند تا سیستم بهترین زمان مشترک را پیدا کند.
@@ -931,7 +950,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           <div id="c_fixed_box" style="display:none;margin-bottom:14px;padding:12px;background:#f8f7fc;border:1px solid #e7e2f5;border-radius:14px">
             <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
               <b style="font-size:13px">📅 تاریخ و ساعت‌های انتخابی:</b>
-              <span class="tiny">می‌توانی چند گزینه بدهی تا بهترین انتخاب شود</span>
+              <span class="tiny">می‌توانی چند گزینه بدهی</span>
             </div>
             <div id="c_opts"></div>
             <button class="btn ghost sm" id="c_add" style="margin-top:4px">+ یک تاریخ دیگر</button>
@@ -947,24 +966,24 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               <input type="text" id="c_note" maxlength="300" placeholder="مثلاً: صبح‌ها قبل از کار در پارک…" style="margin-bottom:8px">
               <label class="f">⏰ تاریخ انقضا یا مهلت ایونت (اختیاری)</label>
               <input type="date" id="c_expires" style="margin-bottom:4px">
-              <span class="tiny" style="color:var(--muted);display:block;margin-bottom:8px">بعد از این تاریخ، ایونت خودکار از دید عموم برداشته می‌شود.</span>
+              <span class="tiny" id="c_expires_lbl" style="color:var(--p);font-weight:600;display:block;margin-bottom:4px"></span>
+              <span class="tiny" style="color:var(--muted);display:block;margin-bottom:10px">بعد از این تاریخ، ایونت خودکار از دید عموم برداشته می‌شود.</span>
               <div class="opt" id="c_wo"><span class="e">👩</span><div><b>فقط برای خانم‌ها</b></div></div>
             </div>
           </details>
 
           <div id="c_err"></div>
-          <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px">
-            <button class="btn" id="c_go_open" style="font-size:15px;padding:12px 16px;width:100%;font-weight:800;justify-content:center">🚀 ساخت قرار و دریافت لینک اشتراک ✨</button>
-            <button class="btn line sm" id="c_go" style="width:100%;font-size:13px;padding:8px;justify-content:center;color:var(--muted);border-color:#ded7f2">📅 یا با روز و ساعت مشخص</button>
+          <div style="margin-top:14px">
+            <button class="btn block" id="c_go_open" style="font-size:15px;padding:12px 16px;font-weight:800">🚀 ساخت قرار و دریافت لینک اشتراک ✨</button>
           </div>
         </div>
 
         <div id="find_pane" style="display:none">
           <div style="background:#f8f6ff;border:1.5px solid #e1daf7;border-radius:14px;padding:12px 14px;margin-bottom:14px">
             <label class="f" style="margin-top:0">🔑 ورود مستقیم با کد یا لینک دورهمی:</label>
-            <div class="row" style="gap:8px;margin-top:6px">
-              <input type="text" id="join_code_inp" class="code-inp" placeholder="کد یا لینک دورهمی مثلاً: 096be90f6c" style="flex:1">
-              <button type="button" class="btn" id="join_code_go">ورود ←</button>
+            <div class="row" style="gap:8px;margin-top:6px;flex-wrap:nowrap">
+              <input type="text" id="join_code_inp" class="code-inp" placeholder="کد یا لینک مثلاً 096be90f" style="flex:1;min-width:0">
+              <button type="button" class="btn sm" id="join_code_go" style="white-space:nowrap;flex:none;min-height:44px">ورود ←</button>
             </div>
             <p class="tiny" style="margin-top:6px;margin-bottom:0">کد یا لینکی که از دوستت گرفتی را وارد کن تا ساعت‌ها و شهرهایت را بفرستی.</p>
           </div>
@@ -974,7 +993,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               <h2 style="margin:0;font-size:16px">🌿 ایونت‌ها و قرارهای دوستان</h2>
               <span class="tiny">${fa(mine.length)} قرار فعال</span>
             </div>
-            <p class="muted tiny" style="margin-top:2px;margin-bottom:8px">روی هر ایونت بزن تا ساعت‌های آزاد و شهرهایت را بفرستی؛ سیستم بهترین زمان و شهر مشترک را پیدا می‌کند:</p>
+            ${mine.length ? `<p class="muted tiny" style="margin-top:2px;margin-bottom:8px">روی هر ایونت بزن تا ساعت‌های آزاد و شهرهایت را بفرستی؛ سیستم بهترین زمان و شهر مشترک را پیدا می‌کند:</p>` : ""}
 
             ${mine.length ? `
               <div class="chips" id="meetups_filter_bar" style="gap:5px;margin:6px 0 10px">
@@ -986,13 +1005,12 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               </div>
               <div id="meetups_list_container">
                 ${mine.map(m => {
-              const org = m.organizer_name ? `برگزارکننده: ${m.organizer_name}` : "دورهمی گروهی";
               const cnt = m.count != null ? `${fa(m.count)} نفر اعلام آمادگی کرده‌اند` : "مشاهده و ثبت ترجیحات";
               const icon = detectActivityIcon(m.title);
               const isPair = detectTargetType(m.title, m.note) === "pair";
               const isArchived = Boolean(m.is_archived || m.final?.archived);
               const expDate = m.expires_at || m.final?.expires_at;
-              const isExpired = Boolean(m.is_expired || (expDate && new Date(expDate).getTime() < Date.now()));
+              const isExpired = Boolean(m.is_expired || isDateExpired(expDate));
               let cat = "other";
               if (["☕","🍽️"].includes(icon)) cat = "cafe";
               else if (["🏃‍♀️","🏸","🚴"].includes(icon)) cat = "sport";
@@ -1000,13 +1018,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               else if (["🌳","🧺"].includes(icon)) cat = "walk";
               return `
               <a class="meetup-item" data-mcat="${cat}" href="/d/${esc(m.code)}${m.admin && m.admin !== "account"?`?admin=${esc(m.admin)}`:""}">
-                <div style="display:flex;align-items:center;gap:12px">
+                <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:200px">
                   <div class="av-sm" style="background:${colorOf(m.organizer_name||'د')};width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px;flex:none">${icon}</div>
                   <div>
                     <div class="row" style="gap:6px;margin-bottom:3px;flex-wrap:wrap;align-items:center">
                       <b style="font-size:15px">${esc(m.title || (m.organizer_name ? "دورهمی " + m.organizer_name : "قرار دورهمی"))}</b>
-                      <code class="tiny" style="background:#eeeaf8;padding:1px 6px;border-radius:6px;color:var(--p)">#${esc(m.code)}</code>
-                      <span class="pill sm" style="background:${isPair?"#fff0f6":"#f0f5ff"};color:${isPair?"#d63384":"#0d6efd"}">${isPair ? "👯‍♀️ همراه دونفره" : "👥 گروهی"}</span>
+                      <code class="tiny ltr" style="background:#eeeaf8;padding:1px 6px;border-radius:6px;color:var(--p)">#${esc(m.code)}</code>
+                      <span class="pill sm" style="background:${isPair?"#fff0f6":"#f0f5ff"};color:${isPair?"#d63384":"#0d6efd"}">${isPair ? "👯‍♀️ دونفره" : "👥 گروهی"}</span>
                       ${isArchived ? '<span class="pill sm" style="background:#fff3d4;color:#8a5a00">📦 آرشیو</span>' : ''}
                       ${isExpired ? '<span class="pill sm" style="background:#ffe3e3;color:#c92a2a">⏰ منقضی</span>' : ''}
                     </div>
@@ -1014,16 +1032,17 @@ export function mount(root: HTMLElement, opts: DhOptions) {
                   </div>
                 </div>
                 <div class="row" style="gap:4px">
-                  ${m.final?'<span class="pill g">قطعی</span>':""}
+                  ${isFinalized(m.final)?'<span class="pill g">قطعی</span>':""}
                   ${m.admin?'<span class="pill">مدیریت ⚙️</span>':'<span class="pill" style="font-weight:700">منم می‌تونم بیام 🙋‍♀️</span>'}
                 </div>
               </a>`;
             }).join("")}
               </div>
             ` : `
-              <div style="text-align:center;padding:20px;background:#f9f9fc;border-radius:12px;color:var(--muted)">
-                <div style="font-size:24px;margin-bottom:4px">🌿</div>
-                <p class="tiny" style="margin:0">هنوز ایونتی ثبت نشده است. اولین قرار را در تب «ساخت ایونت» بساز!</p>
+              <div style="text-align:center;padding:24px 16px;background:#f9f9fc;border-radius:14px;color:var(--muted);margin-top:8px">
+                <div style="font-size:28px;margin-bottom:6px">🌿</div>
+                <p class="tiny" style="margin:0 0 12px;font-size:13.5px">هنوز ایونتی ثبت نشده است. اولین قرار را خودت بساز!</p>
+                <button type="button" class="btn ghost sm" id="empty_go_create">✨ ساخت اولین قرار ←</button>
               </div>
             `}
           </div>
@@ -1031,7 +1050,6 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       </div>
     `;
     bindLoginLinks();
-    if ($("#open_my_prof_btn")) $("#open_my_prof_btn").onclick = () => openProfileModal();
     if (sharedProf) openProfileModal(sharedProf);
 
     const tabCreate = $("#mode_create_tab");
@@ -1042,11 +1060,15 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         tabCreate?.classList.remove("on");
         if ($("#create_pane")) $("#create_pane").style.display = "none";
         if ($("#find_pane")) $("#find_pane").style.display = "block";
+        if ($("#home_hero_h1")) $("#home_hero_h1").textContent = "🔍 پیدا کردن ایونت";
+        if ($("#home_hero_sub")) $("#home_hero_sub").textContent = "کد دورهمی را وارد کن یا از بین قرارهای فعال دوستان انتخاب کن:";
       } else {
         tabCreate?.classList.add("on");
         tabFind?.classList.remove("on");
         if ($("#create_pane")) $("#create_pane").style.display = "block";
         if ($("#find_pane")) $("#find_pane").style.display = "none";
+        if ($("#home_hero_h1")) $("#home_hero_h1").textContent = "✨ یک دورهمی بساز";
+        if ($("#home_hero_sub")) $("#home_hero_sub").textContent = "قراری که دوست داری را ثبت کن تا دوستانت زمان و مکانشان را هماهنگ کنند:";
       }
     }
     if (tabCreate && tabFind) {
@@ -1054,6 +1076,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       tabFind.onclick = () => {
         switchHomeTab(true);
         $("#join_code_inp")?.focus();
+      };
+    }
+    if ($("#empty_go_create")) $("#empty_go_create").onclick = () => switchHomeTab(false);
+    if ($("#c_expires")) {
+      $("#c_expires").oninput = (e) => {
+        const v = e.target.value;
+        if ($("#c_expires_lbl")) $("#c_expires_lbl").textContent = v ? `📅 ${fmtDate(v)}` : "";
       };
     }
     if (location.hash === "#find" || location.hash === "#join" || q.get("tab") === "find" || q.get("tab") === "join") {
@@ -1097,10 +1126,10 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const addOpt = (d="", t="15:00") => { opts.push({d,t}); drawOpts(); };
     function drawOpts(){
       $("#c_opts").innerHTML = opts.map((o,i)=>`
-        <div class="row" style="margin-bottom:8px">
-          <input type="date" data-i="${i}" data-k="d" value="${esc(o.d)}" style="flex:1.3">
-          <input type="time" data-i="${i}" data-k="t" value="${esc(o.t)}" style="flex:1">
-          ${opts.length>1?`<button class="btn line sm" data-del="${i}" aria-label="حذف">✕</button>`:""}
+        <div class="row" style="margin-bottom:8px;flex-wrap:nowrap;gap:6px">
+          <input type="date" data-i="${i}" data-k="d" value="${esc(o.d)}" style="flex:1.3;min-width:0;padding:9px 8px">
+          <input type="time" data-i="${i}" data-k="t" value="${esc(o.t)}" style="flex:1;min-width:0;padding:9px 8px">
+          ${opts.length>1?`<button class="btn line sm" data-del="${i}" aria-label="حذف" style="flex:none;padding:6px 10px">✕</button>`:""}
         </div>`).join("");
       $("#c_opts").querySelectorAll("input").forEach(inp => inp.oninput = () => opts[inp.dataset.i][inp.dataset.k] = inp.value);
       $("#c_opts").querySelectorAll("[data-del]").forEach(b => b.onclick = () => { opts.splice(+b.dataset.del,1); drawOpts(); });
@@ -1135,14 +1164,11 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       $("#c_tgt_group")?.classList.toggle("on", tgt === "group");
       $("#c_tgt_pair")?.classList.toggle("on", tgt === "pair");
       const btnOpen = $("#c_go_open");
-      const btnFixed = $("#c_go");
       if (btnOpen) {
         if (!openSchedule) {
           btnOpen.textContent = tgt === "pair" ? "👯‍♀️ ثبت قرار دو‌نفره با این تاریخ‌ها ✨" : "📅 ساخت دورهمی با این تاریخ‌ها ✨";
-          if (btnFixed) btnFixed.textContent = "🙋‍♀️ زمان شناور";
         } else {
           btnOpen.textContent = tgt === "pair" ? "👯‍♀️ ساخت قرار همراهی و دریافت لینک ✨" : "🚀 ساخت قرار و دریافت لینک اشتراک ✨";
-          if (btnFixed) btnFixed.textContent = "📅 با روز و ساعت مشخص";
         }
       }
     };
@@ -1199,16 +1225,15 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         : (orgName ? `دورهمی ${orgName} ✨` : (isOpen ? "بریم بیرون؟ ✨" : "دورهمی ✨"));
       const title = rawTitle || defaultTitle;
       const good = isOpen ? [] : opts.filter(o => o.d).slice(0,10);
-      if (!isOpen && !good.length) { $("#c_err").innerHTML = `<div class="err">حداقل یک روز انتخاب کن (یا دکمهٔ «بریم بیرون؟ بدون تعیین وقت» را بزن).</div>`; return; }
-      const b = isOpen ? $("#c_go_open") : $("#c_go"); b.disabled = true; b.innerHTML = `<span class="spin"></span>`;
+      if (!isOpen && !good.length) { $("#c_err").innerHTML = `<div class="err">حداقل یک روز انتخاب کن (یا گزینهٔ «زمان شناور» را بزن).</div>`; return; }
+      const b = $("#c_go_open"); b.disabled = true; b.innerHTML = `<span class="spin"></span>`;
       let note = ($("#c_note")?.value || "").trim();
       if (currentTarget === "pair" && !note.includes("همراه دو‌نفره")) {
         note = `[همراه دو‌نفره] ${note}`.trim();
       }
       try {
         const expDate = $("#c_expires")?.value || null;
-      const r = await rpc("dh_create", {p_title:title, p_note:note, p_organizer:orgName, p_options:good, p_women_only:wo});
-        store.set("dh_"+r.code, {title, organizer_name: orgName, admin:r.admin_token});
+        const r = await rpc("dh_create", {p_title:title, p_note:note, p_organizer:orgName, p_options:good, p_women_only:wo});
         if (expDate) {
           try {
             await fetch("/api/d/manage", {
@@ -1219,14 +1244,14 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           } catch(e){}
         }
         store.set("dh_"+r.code, {title, organizer_name: orgName, admin:r.admin_token});
+        profilesLoaded = false;
         go(`/d/${r.code}?admin=${r.admin_token}&new=1`);
       } catch(e){
         $("#c_err").innerHTML = `<div class="err">${esc(errMsg(e))}</div>`;
         b.disabled=false;
-        b.textContent = isOpen ? (currentTarget === "pair" ? "👯‍♀️ ساخت قرار همراهی و گرفتن کد و لینک ✨" : "🙋‍♀️ ساخت دورهمی باز و گرفتن کد و لینک ✨") : "📅 ساخت با روز و ساعت مشخص";
+        updateTargetUI(currentTarget);
       }
     }
-    $("#c_go").onclick = () => createMeetup(false);
     $("#c_go_open").onclick = () => createMeetup(openSchedule);
   }
 
@@ -1237,7 +1262,12 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     app.innerHTML = `<div class="center" style="padding:60px 0"><span class="spin"></span></div>`;
     try { M = await rpc("dh_get", {p_code:code, p_admin:ADMIN}); }
     catch(e){ app.innerHTML = `<div class="card"><div class="err">${esc(errMsg(e))}</div><a class="btn" href="/d">صفحهٔ اول</a></div>`; return; }
-    if (!M) { app.innerHTML = `<div class="card"><h2>این لینک پیدا نشد 😕</h2><p class="muted">شاید برگزارکننده پاکش کرده باشد.</p><a class="btn" href="/d">یک دورهمی تازه بساز</a></div>`; return; }
+    if (!M) {
+      try { localStorage.removeItem("dh_"+code); } catch(e){}
+      profilesLoaded = false;
+      app.innerHTML = `<div class="card"><h2>این لینک پیدا نشد 😕</h2><p class="muted">شاید برگزارکننده پاکش کرده باشد.</p><a class="btn" href="/d">یک دورهمی تازه بساز</a></div>`;
+      return;
+    }
     const s = store.get("dh_"+code) || {};
     if (M.is_admin && M.admin_token) ADMIN = M.admin_token;
     if (M.my_edit) s.edit = M.my_edit;                // signed in: my answer follows me across devices
@@ -1265,7 +1295,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       <div class="copybox"><code>${esc(linkFor(M.code))}</code><button class="btn sm" id="cp">کپی لینک</button></div>
       <div class="row" style="margin-top:10px">
         <a class="btn wa grow" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(shareText())}">واتس‌اپ</a>
-        <a class="btn line grow" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(linkFor(M.code))}&text=${encodeURIComponent(shareText().split("\n")[0])}">تلگرام</a>
+        <a class="btn ghost grow" style="background:#e8f4fd;color:#0088cc" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(linkFor(M.code))}&text=${encodeURIComponent(shareText().split("\n")[0])}">تلگرام</a>
         ${navigator.share?`<button class="btn line grow" id="nshare">بیشتر…</button>`:""}
       </div>`;
   }
@@ -1278,29 +1308,29 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const adminLink = `${linkFor(M.code)}?admin=${ADMIN}`;
     const isArchived = Boolean(M.is_archived || M.final?.archived);
     const expDate = M.expires_at || M.final?.expires_at;
-    const isExpired = Boolean(M.is_expired || (expDate && new Date(expDate).getTime() < Date.now()));
+    const isExpired = Boolean(M.is_expired || isDateExpired(expDate));
     app.innerHTML = topbar() + `
-      <header class="top"><span class="logo">${detectActivityIcon(M.title)}</span><div><b>${esc(M.title)}</b><small>ساخته شد · کد: #${esc(M.code)}</small></div></header>
+      <header class="top"><span class="logo">${detectActivityIcon(M.title)}</span><div><b>${esc(M.title)}</b><small>ساخته شد · کد: <span class="ltr">#${esc(M.code)}</span></small></div></header>
       ${isArchived ? `<div class="okbox" style="margin:8px 0;background:#fff8e6;border-color:#f6d899;color:#8a5a00">📦 <b>این دورهمی آرشیو شده است</b> (فقط برای افراد دارای لینک قابل مشاهده است).</div>` : ""}
       ${isExpired ? `<div class="okbox" style="margin:8px 0;background:#fff0f0;border-color:#ffd0d0;color:#c92a2a">⏰ <b>مهلت یا تاریخ انقضای این دورهمی به پایان رسیده است.</b></div>` : (expDate ? `<div class="tiny" style="color:var(--muted);margin-bottom:6px">⏰ مهلت اعلام حضور تا: <b>${fmtDate(expDate)}</b></div>` : "")}
-      <div class="card"><div class="hero-e">🎉</div><h1>آماده است!</h1>
+      <div class="card"><div class="row" style="gap:10px;margin-bottom:6px"><span class="hero-e" style="font-size:34px">🎉</span><h1 style="margin:0">آماده است!</h1></div>
         <p>کد یا لینک زیر را برای دوستانت بفرست تا ساعت‌ها و محدودهٔ مکانشان را روی نقشه بزنند:</p>${shareButtons()}</div>
       <div class="card"><h2>🔑 لینک مخصوص خودت (برگزارکننده)</h2>
-        <p class="muted">با این لینک می‌توانی آخر کار روز و جا را «قطعی» کنی. این را در گروه نفرست؛ برای خودت نگه دار (مثلاً در «Saved messages»).${USER?" چون وارد همراه شده‌ای، از «بریم بیرون» هم همیشه به آن دسترسی داری.":""}</p>
+        <p class="muted">با این لینک می‌توانی آخر کار روز و جا را «قطعی» کنی یا ایونت را ویرایش و پاک کنی. این را در گروه نفرست؛ برای خودت نگه دار (مثلاً در <bdi dir="ltr">Saved messages</bdi>).${USER?" چون وارد همراه شده‌ای، از «بریم بیرون» هم همیشه به آن دسترسی داری.":""}</p>
         <div class="copybox"><code>${esc(adminLink)}</code><button class="btn sm ghost" id="cpa">کپی</button></div></div>
       
       ${!USER ? `
       <div class="card" id="post_create_auth_box" style="background:linear-gradient(135deg, #fbfaff 0%, #f4f0fd 100%);border:1.5px solid #ded5f7;border-radius:14px;padding:14px 16px;margin:12px 0">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-          <span style="font-size:22px">🔐</span>
+          <span style="font-size:20px">🔐</span>
           <b style="font-size:15px">دوست داری این ایونت روی حسابت ذخیره بشه؟</b>
           <span class="pill sm" style="background:#fff;color:var(--p)">اختیاری</span>
         </div>
         <p class="muted tiny" style="margin:0 0 12px;line-height:1.6">
           ایونتت ساخته شد! اگر می‌خواهی در هر گوشی یا سیستمی به آن دسترسی داشته باشی و وقتی دوستانت اعلام حضور کردند باخبر شوی، می‌توانی حسابت را ثبت کنی (اجباری نیست):
         </p>
-        <div class="row" style="gap:8px;flex-wrap:wrap">
-          <a href="/login?next=${encodeURIComponent(`/d/${M.code}?admin=${ADMIN}`)}" class="btn sm" data-ext="1" data-login="1">✨ ذخیره با ایمیل یا شماره موبایل</a>
+        <div class="row" style="gap:8px;flex-wrap:wrap;justify-content:flex-start">
+          <a href="/login?next=${encodeURIComponent(`/d/${M.code}?admin=${ADMIN}`)}" class="btn ghost sm" data-ext="1" data-login="1">✨ ذخیره با ایمیل یا شماره موبایل</a>
           <button type="button" class="btn line sm" id="post_create_dismiss_btn">فعلاً مهمان می‌مانم</button>
         </div>
       </div>` : ""}
@@ -1671,7 +1701,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         <div class="step-h"><span>${esc(s.t)}</span><span>${quick ? `${fa([idx("hi"),idx("avail"),idx("review")].indexOf(i)+1 || 2)} از ۳ · سریع` : `${fa(i+1)} از ${fa(steps.length)}`}</span></div>
         <div class="prog"><i style="width:${quick ? (([idx("hi"),idx("avail"),idx("review")].indexOf(i)+1 || 2)/3*100) : (i+1)/steps.length*100}%"></i></div>
         <div class="card">${s.draw()}</div><div id="f_err"></div>
-        ${i===0 ? `<div class="row"><a href="/d/${CODE}?tab=result" class="btn line sm">${edit?"دیدن نتیجه بدون تغییر":"اول فقط نتیجه را ببینم"}</a></div>`:""}
+        ${i===0 ? `<div class="row"><a href="/d/${CODE}?${ADMIN?`admin=${esc(ADMIN)}&`:""}tab=result" class="btn line sm">${edit?"دیدن نتیجه بدون تغییر":"اول فقط نتیجه را ببینم"}</a></div>`:""}
         <div class="bar"><div class="in">
           ${i>0?`<button class="btn line" id="f_back">قبلی</button>`:""}
           <button class="btn grow" id="f_next">${i===steps.length-1?(edit?"ذخیرهٔ تغییرات ✓":"ثبت و دیدن نتیجه ✓"):"بعدی"}</button>
@@ -1789,22 +1819,23 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const my = store.get("dh_"+CODE) || {};
     const isArchived = Boolean(M.is_archived || M.final?.archived);
     const expDate = M.expires_at || M.final?.expires_at;
-    const isExpired = Boolean(M.is_expired || (expDate && new Date(expDate).getTime() < Date.now()));
+    const isExpired = Boolean(M.is_expired || isDateExpired(expDate));
     app.innerHTML = topbar() + `
       <header class="top"><span class="logo">${detectActivityIcon(M.title)}</span><div><b>${esc(M.title)}</b><small>${fa(A.n)} نفر فرم را پر کرده‌اند${M.organizer_name?" · برگزارکننده: "+esc(M.organizer_name):""}</small></div></header>
       ${isArchived ? `<div class="okbox" style="margin:8px 0;background:#fff8e6;border-color:#f6d899;color:#8a5a00">📦 <b>این دورهمی آرشیو شده است</b> (از لیست عمومی پنهان است اما با لینک در دسترس است).</div>` : ""}
       ${isExpired ? `<div class="okbox" style="margin:8px 0;background:#fff0f0;border-color:#ffd0d0;color:#c92a2a">⏰ <b>مهلت اعلام حضور یا تاریخ انقضای این دورهمی به پایان رسیده است.</b></div>` : (expDate ? `<div class="tiny" style="color:var(--muted);margin-bottom:6px">⏰ مهلت اعلام حضور تا: <b>${fmtDate(expDate)}</b></div>` : "")}
       ${detectTargetType(M.title, M.note) === "pair" ? `<div class="pill sm" style="background:#fff0f6;color:#d63384;display:inline-block;margin-bottom:8px">👯‍♀️ قرار همراهی دو‌نفره (هم‌پا)</div>` : ""}
       ${M.note ? `<div class="okbox" style="margin:8px 0;background:#f6f4fe;border-color:#d7cbfa">💬 <b>پیام ${esc(M.organizer_name || "برگزارکننده")}:</b> ${esc(M.note.replace(/^\[همراه دو‌نفره\]\s*/, ""))}</div>` : ""}
-      ${M.final ? finalCard(M.final) : ""}
+      ${isFinalized(M.final) ? finalCard(M.final) : ""}
       <div class="tabs">
-        ${[["result","🧭 نتیجه"],["people","👯‍♀️ آدم‌ها"],["ice","🧊 یخ‌شکن"],["share", ADMIN ? "⚙️ دعوت و مدیریت" : "📤 دعوت"]].map(([k,l])=>`<span class="tab ${TAB===k?"on":""}" data-tab="${k}">${l}</span>`).join("")}
+        ${[["result","🧭 نتیجه"],["people","👯‍♀️ آدم‌ها"],["ice","🧊 یخ‌شکن"],["share", ADMIN ? "⚙️ مدیریت" : "📤 دعوت"]].map(([k,l])=>`<span class="tab ${TAB===k?"on":""}" data-tab="${k}">${l}</span>`).join("")}
       </div>
       <div id="tabc"></div>
       ${memberCard()}
-      <div class="row" style="margin-top:14px;flex-wrap:wrap;gap:6px">
-        <a class="btn line sm" href="/d/${CODE}?form=1">✏️ ویرایش فرم من</a>
-        ${my.edit?`<button class="btn line sm" id="del_me">🗑️ پاک کردن جواب من</button>`:`<a class="btn sm" href="/d/${CODE}?form=1">📝 پر کردن فرم</a>`}
+      <div class="row" style="margin-top:14px;flex-wrap:wrap;gap:6px;justify-content:flex-start">
+        ${my.edit
+          ? `<a class="btn line sm" href="/d/${CODE}?form=1">✏️ ویرایش فرم من</a><button class="btn line sm" id="del_me">🗑️ پاک کردن جواب من</button>`
+          : `<a class="btn sm" href="/d/${CODE}?form=1">📝 پر کردن فرم</a>`}
         ${ADMIN ? `<button class="btn line sm" id="quick_admin_btn" style="color:var(--p);font-weight:700">⚙️ مدیریت و حذف ایونت</button>` : ""}
         <a class="btn line sm" href="/d">+ دورهمی تازه</a>
       </div>
@@ -1816,7 +1847,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         TAB = "share";
         resultPage();
         setTimeout(() => {
-          $("#a_delete")?.scrollIntoView({ behavior: "smooth" });
+          $("#a_manage_card")?.scrollIntoView({ behavior: "smooth" });
         }, 100);
       };
     }
@@ -2086,64 +2117,81 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const defaultDate = f.d || new Date(Date.now() + 2*86400000).toISOString().slice(0,10);
     const isArchived = Boolean(M.is_archived || M.final?.archived);
     const expDate = M.expires_at || M.final?.expires_at;
-    const expVal = expDate ? new Date(expDate).toISOString().slice(0,10) : "";
+    const expVal = expDate ? String(expDate).slice(0, 10) : "";
 
-    return `<div class="card"><h2>🔑 قطعی کردن (فقط تو می‌بینی)</h2>
-      <label class="f">روز</label>
-      ${M.options.length
-        ? `<select id="a_slot">${M.options.map((o,i)=>`<option value="${i}" ${i===sel?"selected":""}>${esc(fmtOpt(o))}${A.slots.find(s=>s.i===i)?` — ${fa(A.slots.find(s=>s.i===i).y)} نفر می‌تونن`:""}</option>`).join("")}</select>`
-        : `<input type="date" id="a_date" value="${esc(defaultDate)}">`}
-      <label class="f">ساعت</label><input type="time" id="a_time" value="${esc(f.t || (M.options[Math.max(sel,0)]||{}).t || "16:00")}">
-      <label class="f">شهر</label>
-      <select id="a_city">${CITIES.filter(c=>c.meet).map(c=>`<option value="${c.key}" ${(pick.city||f.city||(bestHub&&bestHub.h.key))===c.key?"selected":""}>${esc(c.fa)}</option>`).join("")}</select>
-      <label class="f">اسم جا</label><input type="text" id="a_venue" maxlength="100" value="${esc(pick.venue||f.venue||"")}" placeholder="از «پیدا کردن جا» انتخاب کن یا بنویس">
-      <label class="f">آدرس (اختیاری)</label><input type="text" id="a_addr" maxlength="150" value="${esc(pick.address||f.address||"")}">
-      <label class="f">یادداشت برای همه (اختیاری)</label><input type="text" id="a_note" maxlength="200" value="${esc(f.note||"")}" placeholder="مثلاً: جلوی در ایستگاه همدیگر را ببینیم">
-      <button class="btn block" id="a_go" style="margin-top:12px">✅ قطعی کن</button>
-      ${M.final?`<button class="btn line sm" id="a_clear" style="margin-top:8px">برداشتن قطعی</button>`:""}
-      <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
+    return `
+      <div class="card" id="a_manage_card">
+        <h2 style="margin:0 0 6px">⚙️ مدیریت ایونت (ویرایش، آرشیو و حذف)</h2>
+        <p class="tiny muted" style="margin-bottom:10px">فقط تو به عنوان برگزارکننده این بخش را می‌بینی:</p>
+        <div class="row" style="gap:8px;margin-bottom:10px;flex-wrap:wrap;justify-content:flex-start">
+          <button type="button" class="btn ghost sm" id="a_btn_edit">✏️ ویرایش عنوان و مهلت انقضا</button>
+          <button type="button" class="btn line sm" id="a_btn_archive">
+            ${isArchived ? "📤 بازگردانی از آرشیو" : "📦 آرشیو کردن دورهمی"}
+          </button>
+          <button type="button" class="btn line sm" id="a_delete" style="color:var(--bad);border-color:#f5c2c2">🗑️ پاک کردن کل دورهمی</button>
+        </div>
 
-      <h3 style="margin:0 0 6px">⚙️ تنظیمات برگزارکننده (ویرایش و آرشیو)</h3>
-      <p class="tiny muted" style="margin-bottom:10px">می‌توانی مشخصات دورهمی را ویرایش کنی، تاریخ انقضا بگذاری، یا آن را آرشیو یا پاک کنی:</p>
-      
-      <div class="row" style="gap:8px;margin-bottom:10px;flex-wrap:wrap">
-        <button type="button" class="btn sm" id="a_btn_edit">✏️ ویرایش عنوان و مهلت انقضا</button>
-        <button type="button" class="btn line sm" id="a_btn_archive">
-          ${isArchived ? "📤 بازگردانی از آرشیو" : "📦 آرشیو کردن دورهمی"}
-        </button>
-      </div>
-
-      <div id="a_edit_box" style="display:none;background:#f9f8fe;border:1.5px solid #ded7f2;border-radius:14px;padding:12px;margin-bottom:12px">
-        <label class="f" style="margin-top:0">عنوان یا موضوع دورهمی</label>
-        <input type="text" id="ae_title" maxlength="80" value="${esc(M.title || "")}">
-        <label class="f">توضیح کوتاه</label>
-        <input type="text" id="ae_note" maxlength="300" value="${esc(M.note || "")}">
-        <label class="f">⏰ تاریخ انقضا / مهلت (اختیاری)</label>
-        <input type="date" id="ae_expires" value="${esc(expVal)}">
-        <span class="tiny" style="color:var(--muted);display:block;margin-bottom:8px">بعد از این تاریخ، ایونت خودکار از دید عموم برداشته می‌شود.</span>
-        <div class="opt ${M.women_only ? "on" : ""}" id="ae_wo" style="margin-bottom:8px"><span class="e">👩</span><div><b>فقط برای خانم‌ها</b></div></div>
-        <div class="row" style="gap:8px;margin-top:8px">
-          <button type="button" class="btn sm" id="ae_save">💾 ذخیرهٔ تغییرات</button>
-          <button type="button" class="btn line sm" id="ae_cancel">انصراف</button>
+        <div id="a_edit_box" style="display:none;background:#f9f8fe;border:1.5px solid #ded7f2;border-radius:14px;padding:12px;margin-top:8px">
+          <label class="f" style="margin-top:0">عنوان یا موضوع دورهمی</label>
+          <input type="text" id="ae_title" maxlength="80" value="${esc(M.title || "")}">
+          <label class="f">توضیح کوتاه</label>
+          <input type="text" id="ae_note" maxlength="300" value="${esc(M.note || "")}">
+          <label class="f">⏰ تاریخ انقضا / مهلت (اختیاری)</label>
+          <input type="date" id="ae_expires" value="${esc(expVal)}">
+          <span class="tiny" id="ae_expires_lbl" style="color:var(--p);font-weight:600;display:block;margin-top:4px">${expVal ? `📅 ${fmtDate(expVal)}` : ""}</span>
+          <span class="tiny" style="color:var(--muted);display:block;margin-bottom:10px">بعد از این تاریخ، ایونت خودکار از دید عموم برداشته می‌شود.</span>
+          <div class="opt ${M.women_only ? "on" : ""}" id="ae_wo" style="margin-bottom:10px"><span class="e">👩</span><div><b>فقط برای خانم‌ها</b></div></div>
+          <div class="row" style="gap:8px;margin-top:8px;justify-content:flex-start">
+            <button type="button" class="btn sm" id="ae_save">💾 ذخیرهٔ تغییرات</button>
+            <button type="button" class="btn line sm" id="ae_cancel">انصراف</button>
+          </div>
         </div>
       </div>
 
-      <button class="btn line sm" id="a_delete" style="color:var(--bad)">🗑️ پاک کردن کل دورهمی و همهٔ جواب‌ها</button></div>`;
+      <div class="card"><h2>🔑 قطعی کردن زمان و مکان</h2>
+        <label class="f">روز</label>
+        ${M.options.length
+          ? `<select id="a_slot">${M.options.map((o,i)=>`<option value="${i}" ${i===sel?"selected":""}>${esc(fmtOpt(o))}${A.slots.find(s=>s.i===i)?` — ${fa(A.slots.find(s=>s.i===i).y)} نفر می‌تونن`:""}</option>`).join("")}</select>`
+          : `<input type="date" id="a_date" value="${esc(defaultDate)}">`}
+        <label class="f">ساعت</label><input type="time" id="a_time" value="${esc(f.t || (M.options[Math.max(sel,0)]||{}).t || "16:00")}">
+        <label class="f">شهر</label>
+        <select id="a_city">${CITIES.filter(c=>c.meet).map(c=>`<option value="${c.key}" ${(pick.city||f.city||(bestHub&&bestHub.h.key))===c.key?"selected":""}>${esc(c.fa)}</option>`).join("")}</select>
+        <label class="f">اسم جا</label><input type="text" id="a_venue" maxlength="100" value="${esc(pick.venue||f.venue||"")}" placeholder="مثلاً: کافه مرکزی یا پارک">
+        <label class="f">آدرس (اختیاری)</label><input type="text" id="a_addr" maxlength="150" value="${esc(pick.address||f.address||"")}">
+        <label class="f">یادداشت برای همه (اختیاری)</label><input type="text" id="a_note" maxlength="200" value="${esc(f.note||"")}" placeholder="مثلاً: جلوی در ایستگاه همدیگر را ببینیم">
+        <button class="btn block" id="a_go" style="margin-top:12px">✅ قطعی کن</button>
+        ${isFinalized(M.final)?`<button class="btn line sm" id="a_clear" style="margin-top:8px">برداشتن قطعی</button>`:""}
+      </div>`;
   }
   function bindAdmin(A){
     if (!ADMIN || !$("#a_go")) return;
     if ($("#a_slot")) $("#a_slot").onchange = () => { const o = M.options[+$("#a_slot").value]; if (o && o.t) $("#a_time").value = o.t; };
     $("#a_go").onclick = async () => {
       const o = $("#a_slot") ? M.options[+$("#a_slot").value] : {d: ($("#a_date")||{}).value || new Date().toISOString().slice(0,10)};
-      const fin = {d:o.d, t:$("#a_time").value, city:$("#a_city").value, venue:$("#a_venue").value.trim(), address:$("#a_addr").value.trim(), note:$("#a_note").value.trim()};
+      const fin: any = {
+        d: o.d,
+        t: $("#a_time").value,
+        city: $("#a_city").value,
+        venue: $("#a_venue").value.trim(),
+        address: $("#a_addr").value.trim(),
+        note: $("#a_note").value.trim(),
+      };
+      if (M.final?.archived || M.is_archived) fin.archived = true;
+      if (M.final?.expires_at || M.expires_at) fin.expires_at = M.final?.expires_at || M.expires_at;
       try { await rpc("dh_finalize", {p_code:CODE, p_admin:ADMIN, p_final:fin}); toast("قطعی شد ✓");
         const city = (cityByKey(fin.city)||{}).fa || "";
         const txt = `✅ «${M.title}» قطعی شد:\n📅 ${fmtDate(fin.d)} ساعت ${fin.t}\n📍 ${fin.venue}${city?" — "+city:""}\nجزئیات و تقویم: ${linkFor(CODE)}`;
-        M.final = fin; TAB = "result"; resultPage();
+        M.final = fin; profilesLoaded = false; TAB = "result"; resultPage();
         setTimeout(() => { if (confirm("پیامش را برای گروه در واتس‌اپ بفرستم؟")) window.open("https://wa.me/?text="+encodeURIComponent(txt), "_blank"); }, 300);
       } catch(e){ toast(errMsg(e)); }
     };
-    if ($("#a_clear")) $("#a_clear").onclick = async () => { try { await rpc("dh_finalize", {p_code:CODE, p_admin:ADMIN, p_final:null}); M.final = null; resultPage(); } catch(e){ toast(errMsg(e)); } };
+    if ($("#a_clear")) $("#a_clear").onclick = async () => {
+      const keepMeta: any = {};
+      if (M.final?.archived || M.is_archived) keepMeta.archived = true;
+      if (M.final?.expires_at || M.expires_at) keepMeta.expires_at = M.final?.expires_at || M.expires_at;
+      const nextFinal = Object.keys(keepMeta).length ? keepMeta : null;
+      try { await rpc("dh_finalize", {p_code:CODE, p_admin:ADMIN, p_final:nextFinal}); M.final = nextFinal; profilesLoaded = false; resultPage(); } catch(e){ toast(errMsg(e)); }
+    };
     
     // Edit meetup
     const editBtn = $("#a_btn_edit");
@@ -2152,8 +2200,14 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       editBtn.onclick = () => {
         editBox.style.display = editBox.style.display === "none" ? "block" : "none";
       };
+      if ($("#ae_expires")) {
+        $("#ae_expires").oninput = (e) => {
+          const v = e.target.value;
+          if ($("#ae_expires_lbl")) $("#ae_expires_lbl").textContent = v ? `📅 ${fmtDate(v)}` : "";
+        };
+      }
       let woVal = Boolean(M.women_only);
-      if ($("#ae_wo")) $("#ae_wo").onclick = (e) => {
+      if ($("#ae_wo")) $("#ae_wo").onclick = () => {
         woVal = !woVal;
         $("#ae_wo").classList.toggle("on", woVal);
       };
@@ -2173,10 +2227,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             body: JSON.stringify({ code: CODE, admin_token: ADMIN, action: "edit", title, note, expires_at, women_only: woVal })
           });
           const j = await res.json();
-          if (j.error) throw new Error(j.error);
-          M.title = title; M.note = note; M.women_only = woVal; M.expires_at = expires_at;
+          if (!res.ok || j.error) throw new Error(j.error || "ذخیره نشد");
+          M.title = title; M.note = note; M.women_only = woVal; M.expires_at = j.expires_at || expires_at;
           if (!M.final) M.final = {};
-          M.final.expires_at = expires_at;
+          M.final.expires_at = j.expires_at || expires_at;
+          const s = store.get("dh_"+CODE) || {};
+          store.set("dh_"+CODE, {...s, title});
+          profilesLoaded = false;
           toast("تغییرات ذخیره شد ✓");
           resultPage();
         } catch(e){
@@ -2204,10 +2261,11 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             body: JSON.stringify({ code: CODE, admin_token: ADMIN, action: "archive", is_archived: !isArchived })
           });
           const j = await res.json();
-          if (j.error) throw new Error(j.error);
+          if (!res.ok || j.error) throw new Error(j.error || "عملیات انجام نشد");
           M.is_archived = !isArchived;
           if (!M.final) M.final = {};
           M.final.archived = !isArchived;
+          profilesLoaded = false;
           toast(!isArchived ? "دورهمی آرشیو شد 📦" : "دورهمی فعال شد 📤");
           resultPage();
         } catch(e){
@@ -2221,13 +2279,22 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     $("#a_delete").onclick = async () => {
       if (!confirm("کل دورهمی و همهٔ جواب‌ها برای همیشه پاک شود؟")) return;
       try {
-        await fetch("/api/d/manage", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ code: CODE, admin_token: ADMIN, action: "delete" })
-        }).catch(() => null);
-        try { await rpc("dh_delete_meetup", {p_code:CODE, p_admin:ADMIN}); } catch(e){}
+        let deleted = false;
+        try {
+          const res = await fetch("/api/d/manage", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ code: CODE, admin_token: ADMIN, action: "delete" })
+          });
+          if (res.ok) deleted = true;
+        } catch(e){}
+        if (!deleted) {
+          await rpc("dh_delete_meetup", {p_code:CODE, p_admin:ADMIN});
+          deleted = true;
+        }
         try { localStorage.removeItem("dh_"+CODE); } catch(e){}
+        profilesLoaded = false;
+        toast("دورهمی پاک شد ✓");
         go("/d");
       } catch(e){ toast(errMsg(e)); }
     };

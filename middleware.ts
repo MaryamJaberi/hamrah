@@ -41,12 +41,13 @@ export async function middleware(req: NextRequest) {
   if (!profile && path !== '/onboarding' && !isDorehami(path)) return redirect('/onboarding');
   if (profile?.is_banned && path !== '/banned') return redirect('/banned');
   const next = req.cookies.get('hamrah_next')?.value;
-  if (profile && isReturnable(next) && path !== next) {
+  const fullPath = req.nextUrl.pathname + req.nextUrl.search;
+  if (profile && isReturnable(next) && fullPath !== next && path !== next) {
     const r = redirect(next!);
     r.cookies.delete('hamrah_next');
     return r;
   }
-  if (next && path === next) res.cookies.delete('hamrah_next');
+  if (next && (fullPath === next || path === next)) res.cookies.delete('hamrah_next');
   if (profile && (path === '/onboarding' || path === '/login' || path === '/')) return redirect('/discover');
   return res;
 }

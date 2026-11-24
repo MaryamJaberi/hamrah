@@ -43,7 +43,7 @@ export default function Login() {
     }
     const searchParams = new URLSearchParams(window.location.search);
     const nextUrl = searchParams.get('next');
-    const target = (nextUrl && nextUrl.startsWith('/')) ? nextUrl : '/discover';
+    const target = (nextUrl && nextUrl.startsWith('/') && !nextUrl.startsWith('//')) ? nextUrl : '/discover';
     router.replace(target);
     router.refresh();
   }
@@ -52,49 +52,42 @@ export default function Login() {
   const phoneOk = id.replace(/\D/g, '').length >= 10;
 
   return (
-    <main className="min-h-screen p-6 flex flex-col justify-center">
-      <div className="text-5xl mb-4">🤝</div>
-      <h1 className="text-2xl font-extrabold mb-2">خوش اومدی به همراه</h1>
-      <p className="text-muted text-sm mb-4">یک کد یک‌بارمصرف برات می‌فرستیم.</p>
+    <main className="min-h-screen p-5 flex flex-col justify-center max-w-md mx-auto">
+      <div className="card p-6">
+        <div className="text-4xl mb-3">🤝</div>
+        <h1 className="text-2xl font-extrabold mb-1.5">خوش اومدی به همراه</h1>
+        <p className="text-muted text-sm mb-5">یک کد یک‌بارمصرف برات می‌فرستیم.</p>
 
-      <div className="p-3 mb-5 bg-card border border-line rounded-xl text-xs flex items-center justify-between">
-        <div className="text-muted leading-relaxed">
-          💡 <span>می‌توانی اول بدون ثبت‌نام ایونت بسازی یا قراری پیدا کنی!</span>
-        </div>
-        <Link href="/d" className="text-indigo-950 font-extrabold hover:underline whitespace-nowrap mr-2">
-          شروع آزاد ←
-        </Link>
+        {step === 'id' ? (
+          <>
+            <div className="flex gap-2 mb-4" role="tablist">
+              {(['email', 'phone'] as const).map((m) => (
+                <button key={m} role="tab" aria-selected={method === m} onClick={() => { setMethod(m); setId(''); }}
+                  className={`chip flex-1 justify-center py-2 ${method === m ? 'chip-on' : ''}`}>{m === 'email' ? 'ایمیل' : 'شماره موبایل'}</button>
+              ))}
+            </div>
+            <label className="label" htmlFor="login-id">{method === 'email' ? 'ایمیل' : 'شماره موبایل'}</label>
+            <input id="login-id" className="input mb-4" dir="ltr" autoComplete={method === 'email' ? 'email' : 'tel'}
+              type={method === 'email' ? 'email' : 'tel'} placeholder={method === 'email' ? 'you@example.com' : '0912… / +31 6…'}
+              value={id} onChange={(e) => setId(e.target.value)} />
+            <button className="btn w-full" disabled={busy || !(method === 'email' ? emailOk : phoneOk)} onClick={send}>
+              {busy ? '…' : 'ارسال کد'}
+            </button>
+          </>
+        ) : (
+          <>
+            <label className="label" htmlFor="otp">کد ارسال‌شده به {id}</label>
+            <input id="otp" className="input mb-4 text-center tracking-[.5em] text-2xl" dir="ltr" inputMode="numeric"
+              autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
+            <button className="btn w-full" disabled={busy || code.length < 6} onClick={verify}>{busy ? '…' : 'ورود'}</button>
+            <button className="mt-3 text-muted text-sm" onClick={() => { setStep('id'); setCode(''); }}>تغییر {method === 'email' ? 'ایمیل' : 'شماره'}</button>
+          </>
+        )}
+        {err && <p role="alert" className="text-warn text-sm mt-3">{err}</p>}
       </div>
-
-      {step === 'id' ? (
-        <>
-          <div className="flex gap-2 mb-4" role="tablist">
-            {(['email', 'phone'] as const).map((m) => (
-              <button key={m} role="tab" aria-selected={method === m} onClick={() => { setMethod(m); setId(''); }}
-                className={`chip flex-1 justify-center py-2 ${method === m ? 'chip-on' : ''}`}>{m === 'email' ? 'ایمیل' : 'شماره موبایل'}</button>
-            ))}
-          </div>
-          <label className="label" htmlFor="login-id">{method === 'email' ? 'ایمیل' : 'شماره موبایل'}</label>
-          <input id="login-id" className="input mb-4" dir="ltr" autoComplete={method === 'email' ? 'email' : 'tel'}
-            type={method === 'email' ? 'email' : 'tel'} placeholder={method === 'email' ? 'you@example.com' : '0912… / +31 6…'}
-            value={id} onChange={(e) => setId(e.target.value)} />
-          <button className="btn w-full" disabled={busy || !(method === 'email' ? emailOk : phoneOk)} onClick={send}>
-            {busy ? '…' : 'ارسال کد'}
-          </button>
-        </>
-      ) : (
-        <>
-          <label className="label" htmlFor="otp">کد ارسال‌شده به {id}</label>
-          <input id="otp" className="input mb-4 text-center tracking-[.5em] text-2xl" dir="ltr" inputMode="numeric"
-            autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
-          <button className="btn w-full" disabled={busy || code.length < 6} onClick={verify}>{busy ? '…' : 'ورود'}</button>
-          <button className="mt-3 text-muted text-sm" onClick={() => { setStep('id'); setCode(''); }}>تغییر {method === 'email' ? 'ایمیل' : 'شماره'}</button>
-        </>
-      )}
-      {err && <p role="alert" className="text-warn text-sm mt-3">{err}</p>}
-      <Link href="/d" className="card mt-8 flex items-center justify-between text-sm border-2 border-primary-soft">
-        <span>🌿 <b>دورهمی و «بریم بیرون؟»</b> (بدون نیاز به ثبت‌نام)</span>
-        <span className="text-primary font-bold">ورود ←</span>
+      <Link href="/d" className="card mt-5 p-4 flex items-center justify-between gap-3 text-sm border-2 border-primary-soft">
+        <span className="leading-relaxed">🌿 <b>دورهمی و «بریم بیرون؟»</b> <span className="text-muted text-xs">(بدون نیاز به ثبت‌نام)</span></span>
+        <span className="text-indigo-950 font-extrabold whitespace-nowrap shrink-0">شروع آزاد ←</span>
       </Link>
     </main>
   );

@@ -91,7 +91,7 @@ export async function GET(req: Request) {
   const onlyEmail = url.searchParams.get('email')?.trim().toLowerCase();
   const db = admin();
 
-  const [{ data: rows }, { data: meetups }] = await Promise.all([
+  const [{ data: rows }, meetupRes] = await Promise.all([
     db
       .from('dh_responses')
       .select('id,meetup_id,name,data,public_fields,updated_at')
@@ -99,11 +99,22 @@ export async function GET(req: Request) {
       .limit(200),
     db
       .from('dh_meetups')
-      .select('id,code,title,note,organizer_name,final,created_at')
+      .select('id,code,title,note,organizer_name,final,expires_at,is_archived,created_at')
       .neq('code', DIRECTORY_CODE)
       .order('created_at', { ascending: false })
       .limit(30),
   ]);
+
+  let meetups = meetupRes.data;
+  if (meetupRes.error) {
+    const fbRes = await db
+      .from('dh_meetups')
+      .select('id,code,title,note,organizer_name,final,created_at')
+      .neq('code', DIRECTORY_CODE)
+      .order('created_at', { ascending: false })
+      .limit(30);
+    meetups = fbRes.data as any;
+  }
 
   const meetupById = new Map((meetups ?? []).map((m: any) => [m.id, m]));
   const countByMeetupId = new Map<string, number>();
@@ -173,7 +184,12 @@ export async function GET(req: Request) {
       const isArchived = Boolean(m.is_archived || m.final?.archived);
       if (isArchived) return false;
       const exp = m.expires_at || m.final?.expires_at;
-      if (exp && new Date(exp).getTime() < Date.now()) return false;
+      if (exp) {
+        const expMs = /^\d{4}-\d{2}-\d{2}$/.test(String(exp))
+          ? new Date(`${exp}T23:59:59.000Z`).getTime()
+          : new Date(exp).getTime();
+        if (!Number.isNaN(expMs) && expMs < Date.now()) return false;
+      }
       return true;
     })
     .slice(0, 10)

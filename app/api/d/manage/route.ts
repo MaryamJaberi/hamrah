@@ -49,10 +49,13 @@ export async function POST(req: Request) {
       const newFinal = { ...currentFinal, archived: targetArchived };
       const updates: Record<string, any> = { final: newFinal };
 
-      try {
-        await db.from('dh_meetups').update({ ...updates, is_archived: targetArchived }).eq('id', m.id);
-      } catch {
-        await db.from('dh_meetups').update(updates).eq('id', m.id);
+      const { error: upErr } = await db
+        .from('dh_meetups')
+        .update({ ...updates, is_archived: targetArchived })
+        .eq('id', m.id);
+      if (upErr) {
+        const { error: fbErr } = await db.from('dh_meetups').update(updates).eq('id', m.id);
+        if (fbErr) throw fbErr;
       }
 
       return NextResponse.json({ ok: true, is_archived: targetArchived });
@@ -64,7 +67,16 @@ export async function POST(req: Request) {
       const note = typeof body.note === 'string' ? body.note.trim().slice(0, 500) : m.note;
       const women_only = typeof body.women_only === 'boolean' ? body.women_only : m.women_only;
       const options = Array.isArray(body.options) ? body.options.slice(0, 10) : m.options;
-      const expires_at = body.expires_at ? new Date(body.expires_at).toISOString() : null;
+
+      let expires_at: string | null = null;
+      if (typeof body.expires_at === 'string' && body.expires_at.trim()) {
+        const raw = body.expires_at.trim();
+        const parsed = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T23:59:59.000Z`) : new Date(raw);
+        if (Number.isNaN(parsed.getTime())) {
+          return NextResponse.json({ error: 'فرمت تاریخ انقضا معتبر نیست' }, { status: 400 });
+        }
+        expires_at = parsed.toISOString();
+      }
 
       const currentFinal = (m.final && typeof m.final === 'object' ? m.final : {}) as Record<string, any>;
       const newFinal = { ...currentFinal, expires_at };
@@ -76,10 +88,13 @@ export async function POST(req: Request) {
         final: newFinal,
       };
 
-      try {
-        await db.from('dh_meetups').update({ ...updates, expires_at }).eq('id', m.id);
-      } catch {
-        await db.from('dh_meetups').update(updates).eq('id', m.id);
+      const { error: upErr } = await db
+        .from('dh_meetups')
+        .update({ ...updates, expires_at })
+        .eq('id', m.id);
+      if (upErr) {
+        const { error: fbErr } = await db.from('dh_meetups').update(updates).eq('id', m.id);
+        if (fbErr) throw fbErr;
       }
 
       return NextResponse.json({
