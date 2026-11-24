@@ -1,2 +1,11 @@
 import { redirect } from 'next/navigation';
-export default function Home() { redirect('/discover'); }
+import { getSession } from '@/lib/supabase/server';
+
+export default async function Home() {
+  const { user } = await getSession();
+  if (user) {
+    redirect('/discover');
+  } else {
+    redirect('/d');
+  }
+}

@@ -43,9 +43,48 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     return "یک مشکلی پیش آمد: " + m;
   }
   const linkFor = code => `${location.origin}/d/${code}`;
-  const fmtDate = d => { try { return new Intl.DateTimeFormat("fa-IR-u-ca-gregory",{weekday:"long",day:"numeric",month:"long"}).format(new Date(d+"T12:00:00")); } catch(e){ return d; } };
+  const fmtDate = d => {
+    try {
+      if (!d) return "";
+      const day = String(d).slice(0, 10);
+      return new Intl.DateTimeFormat("fa-IR-u-ca-gregory",{weekday:"long",day:"numeric",month:"long"}).format(new Date(day+"T12:00:00"));
+    } catch(e){ return String(d || ""); }
+  };
+  const isFinalized = f => Boolean(f && (f.d || f.venue || f.city));
+  const isDateExpired = exp => {
+    if (!exp) return false;
+    const s = String(exp).trim();
+    const ms = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s + "T23:59:59.000Z").getTime() : new Date(s).getTime();
+    return !Number.isNaN(ms) && ms < Date.now();
+  };
+  const fmtLocation = (loc, compact = false) => {
+    if (!loc || loc.mode === "flexible") return "";
+    const cityFa = loc.city_label || (loc.city ? (cityByKey(loc.city)?.fa || loc.city) : "");
+    if (loc.mode === "exact") {
+      const parts = [loc.place, cityFa].filter(Boolean);
+      if (!parts.length) return "";
+      return compact ? `🏠 ${parts.join(" · ")}` : `🏠 مکان پیشنهادی: ${parts.join(" — ")}`;
+    }
+    const parts = [];
+    if (cityFa) parts.push(cityFa);
+    if (loc.place) parts.push(loc.place);
+    if (loc.radius_km) parts.push(`تا ${fa(loc.radius_km)} کیلومتر`);
+    if (!parts.length) return "";
+    return compact ? `📍 ${parts.join(" · ")}` : `📍 محدودهٔ پیشنهادی: ${parts.join(" · ")}`;
+  };
   const fmtOpt = o => `${fmtDate(o.d)}${o.t ? " · ساعت " + fa(o.t) : ""}`;
   const COLORS = ["#5b2a86","#c2185b","#00796b","#ef6c00","#3949ab","#6d4c41","#2e7d32","#ad1457","#0277bd","#7b1fa2"];
+  const fmtAudience = (aud, womenOnly = false) => {
+    const badges: string[] = [];
+    if (aud?.visibility === "private") badges.push("🔒 فقط با لینک خصوصی");
+    else if (aud?.visibility === "nearby") badges.push("📍 فقط اطراف من");
+    if (aud?.smoke === "no_smoke") badges.push("🚭 بدون سیگار");
+    else if (aud?.smoke === "ok") badges.push("🚬 با سیگار اوکیم");
+    if (aud?.alcohol === "no_alcohol") badges.push("🥤 بدون الکل");
+    else if (aud?.alcohol === "ok") badges.push("🍷 با الکل اوکیم");
+    if (womenOnly) badges.push("👩 فقط خانم‌ها");
+    return badges;
+  };
   const colorOf = s => COLORS[[...String(s)].reduce((a,c)=>a+c.charCodeAt(0),0) % COLORS.length];
 
   /* ============ places (station cities) ============ */
@@ -452,8 +491,10 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   }
   async function loadKnownProfiles(){
     if (profilesLoaded) return KNOWN_PROFILES;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 2500);
     try {
-      const r = await fetch("/api/d/profiles");
+      const r = await fetch("/api/d/profiles", { signal: ctrl.signal });
       if (r.ok) {
         const j = await r.json();
         KNOWN_PROFILES = j.profiles || [];
@@ -461,6 +502,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         profilesLoaded = true;
       }
     } catch(e){}
+    finally { clearTimeout(timer); }
     return KNOWN_PROFILES;
   }
   const LABEL = {
@@ -537,14 +579,14 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   function topbar(){
     const cached = store.get("dh_last");
     const myName = USER?.name || cached?.name || "";
-    const myEmail = cached?.email || cached?.data?.email || "";
+    const retUrl = encodeURIComponent(location.pathname + location.search);
     return `<div class="topbar">
       <a href="/d" style="display:flex;align-items:center;gap:6px">🌿 <b>دورهمی همراه</b></a>
-      <div class="row" style="gap:8px">
-        <button type="button" class="btn ghost sm" id="tb_prof_btn" style="padding:5px 11px;font-size:12.5px">
-          ${myName ? `👤 پروفایل ${esc(myName)}${myEmail?" ✓":""}` : `👤 پروفایل من / اتصال جیمیل`}
-        </button>
-        ${USER ? `<a href="/out" data-ext="1" style="font-size:12.5px">بریم بیرون ←</a>` : ""}
+      <div class="row" style="gap:6px">
+        ${myName ? `<button type="button" class="btn line sm" id="tb_prof_btn" style="padding:5px 10px;font-size:12.5px">👤 ${esc(myName)}</button>` : ""}
+        ${USER
+          ? `<a href="/out" data-ext="1" style="font-size:12.5px">بریم بیرون ←</a>`
+          : `<a href="/login?next=${retUrl}" data-ext="1" data-login="1" class="btn ghost sm" style="padding:5px 11px;font-size:12.5px">🔐 ورود / ثبت‌نام</a>`}
       </div>
     </div>`;
   }
@@ -611,24 +653,17 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             <button type="button" class="btn line sm" id="pm_close">✕ بستن</button>
           </div>
 
-          <div style="background:#f7f5ff;border:1.5px solid #e2dcf7;border-radius:14px;padding:11px;margin-bottom:12px">
-            <b style="font-size:13px;display:block;margin-bottom:6px">📧 اتصال به جیمیل / ایمیل (برای دائمی شدن پروفایل در همهٔ گوشی‌ها):</b>
-            <div class="row" style="gap:6px;flex-wrap:wrap">
-              <input type="email" id="pm_email" class="ltr" style="flex:1.4;min-width:170px" placeholder="you@gmail.com" value="${esc(emailVal)}">
-              <input type="text" id="pm_name" style="flex:1;min-width:110px" placeholder="نام تو (مثلاً مریم)" value="${esc(p?.name || "")}">
-              <button type="button" class="btn sm" id="pm_load_btn">بارگذاری / اتصال</button>
-            </div>
-            ${KNOWN_PROFILES.length ? `
-              <details style="margin-top:8px">
-                <summary class="tiny" style="cursor:pointer;color:var(--p);font-weight:700">یا انتخاب سریع از پروفایل‌های قبلی (${KNOWN_PROFILES.map(x=>esc(x.name)).join("، ")})</summary>
-                <div class="prof-grid" style="margin-top:6px">
-                  ${KNOWN_PROFILES.map(kp => `
-                    <div class="prof-btn ${(p && p.name===kp.name)?"on":""}" data-pmpick="${esc(kp.name)}">
-                      <div class="av-sm" style="background:${colorOf(kp.name)}">${esc(kp.name.slice(0,1))}</div>
-                      <div class="nm">${esc(kp.name)}</div>
-                    </div>`).join("")}
-                </div>
-              </details>` : ""}
+          <div style="background:#f7f5ff;border:1.5px solid #e2dcf7;border-radius:14px;padding:12px;margin-bottom:12px">
+            ${USER ? `
+              <div class="row" style="justify-content:space-between;align-items:center">
+                <span style="font-size:13.5px;font-weight:700;color:var(--ok)">✓ وارد شده با حساب همراه (${esc(USER.name || "")})</span>
+                <a href="/out" data-ext="1" class="tiny" style="font-weight:700">رفتن به همراه ←</a>
+              </div>
+            ` : `
+              <b style="font-size:13.5px;display:block;margin-bottom:4px">🔐 ورود به حساب همراه</b>
+              <p class="tiny muted" style="margin:0 0 10px">با ورود (گوگل، ایمیل یا شماره موبایل) پروفایل و ایونت‌هایت در همهٔ دستگاه‌ها ذخیره می‌شود:</p>
+              <a href="/login?next=${encodeURIComponent(location.pathname + location.search)}" data-ext="1" data-login="1" class="btn sm block">ورود با گوگل، ایمیل یا موبایل ←</a>
+            `}
           </div>
 
           ${p ? `
@@ -791,7 +826,8 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   // remember where to come back after login (middleware reads hamrah_next)
   function bindLoginLinks(){
     root.querySelectorAll("[data-login]").forEach(a => a.addEventListener("click", () => {
-      document.cookie = `hamrah_next=${location.pathname}; path=/; max-age=3600; samesite=lax`;
+      const returnUrl = location.pathname + location.search;
+      document.cookie = `hamrah_next=${returnUrl}; path=/; max-age=3600; samesite=lax`;
     }));
     const tbBtn = $("#tb_prof_btn");
     if (tbBtn) tbBtn.onclick = () => openProfileModal();
@@ -803,7 +839,33 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       if (ADMIN) return `<div class="card"><h2>💬 ادامه در همراه</h2><p class="muted">یک برنامهٔ «بریم بیرون» با گفتگوی گروهی می‌سازم. هر کس با حساب همراه فرم را پر کرده خودکار اضافه می‌شود؛ بقیه با همین لینک بعداً می‌پیوندند.</p><button class="btn block" id="dh_plan">ساخت گفتگوی گروه ✨</button></div>`;
       return "";
     }
-    return `<div class="card"><h2>🌿 با حساب «همراه» بهتر است</h2><p class="muted">جواب‌هایت برای دورهمی‌های بعدی می‌ماند، در گفتگوی گروه شرکت می‌کنی و یادآوری می‌گیری. اجباری نیست.</p><a class="btn ghost block" href="/login" data-ext="1" data-login="1">ورود یا ساخت حساب</a></div>`;
+    const hasDismissed = Boolean(store.get("dh_dismiss_auth_" + CODE));
+    if (hasDismissed) {
+      return `
+        <div style="text-align:center;padding:10px 4px;margin-top:6px">
+          <span class="tiny" style="color:var(--muted)">👤 تنظیماتت روی همین گوشی ذخیره است · </span>
+          <a href="/login?next=${encodeURIComponent(location.pathname + location.search)}" class="tiny" style="color:var(--p);font-weight:700" data-ext="1" data-login="1">اتصال به حساب همراه</a>
+        </div>
+      `;
+    }
+    const my = store.get("dh_"+CODE) || {};
+    const returnUrl = encodeURIComponent(location.pathname + location.search);
+    return `
+      <div class="card" id="post_rsvp_auth_box" style="background:linear-gradient(135deg, #fbfaff 0%, #f4f0fd 100%);border:1.5px solid #ded5f7;border-radius:14px;padding:14px 16px;margin:12px 0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="font-size:20px">📬</span>
+          <b style="font-size:15px">دوست داری حسابت را ذخیره کنی؟</b>
+          <span class="pill sm" style="background:#fff;color:var(--p)">اختیاری</span>
+        </div>
+        <p class="muted tiny" style="margin:0 0 12px;line-height:1.6">
+          ${my.edit ? "پاسخ‌هایت ثبت شد! " : ""}اگر می‌خواهی حسابت ذخیره شود تا وقتی برنامه قطعی شد باخبر شوی و در گفتگوی گروه شرکت کنی، می‌توانی وارد شوی (اجباری نیست):
+        </p>
+        <div class="row" style="gap:8px;flex-wrap:wrap;justify-content:flex-start">
+          <a href="/login?next=${returnUrl}" class="btn ghost sm" data-ext="1" data-login="1">🔐 ذخیره و ورود با ایمیل یا موبایل</a>
+          <button type="button" class="btn line sm" id="post_rsvp_dismiss_btn">نه، فقط روی همین گوشی بماند</button>
+        </div>
+      </div>
+    `;
   }
   function bindMember(){
     const pl = $("#dh_plan"); if (pl) pl.onclick = async () => {
@@ -816,11 +878,20 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       try { const id = await rpc("dh_join_plan", {p_code:CODE}); location.href = `/out/p/${id}`; }
       catch(e){ toast(errMsg(e)); jn.disabled = false; }
     };
+    const rsvpDis = $("#post_rsvp_dismiss_btn");
+    if (rsvpDis) {
+      rsvpDis.onclick = () => {
+        store.set("dh_dismiss_auth_" + CODE, 1);
+        resultPage();
+        toast("پاسخ‌هایت روی همین دستگاه ذخیره ماند ✓");
+      };
+    }
     bindLoginLinks();
   }
 
   /* ============ home / create ============ */
   async function homePage(){
+    document.title = "دورهمی · همراه";
     const q = new URLSearchParams(location.search);
     const sharedUser = q.get("u");
     let mine = localItems();
@@ -835,10 +906,14 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     }
     for (const rm of RECENT_MEETUPS) {
       const ex = mine.find(x => x.code === rm.code);
-      if (!ex) mine.push({code: rm.code, title: rm.title, organizer_name: rm.organizer_name, count: rm.count, final: rm.final});
+      if (!ex) mine.push({code: rm.code, title: rm.title, organizer_name: rm.organizer_name, count: rm.count, final: rm.final, expires_at: rm.expires_at, is_archived: rm.is_archived});
       else {
-        if (!ex.organizer_name && rm.organizer_name) ex.organizer_name = rm.organizer_name;
-        if (ex.count == null && rm.count != null) ex.count = rm.count;
+        if (rm.title) ex.title = rm.title;
+        if (rm.organizer_name) ex.organizer_name = rm.organizer_name;
+        if (rm.count != null) ex.count = rm.count;
+        if (rm.final !== undefined) ex.final = rm.final;
+        if (rm.expires_at !== undefined) ex.expires_at = rm.expires_at;
+        if (rm.is_archived !== undefined) ex.is_archived = rm.is_archived;
       }
     }
     if (dead) return;
@@ -850,8 +925,8 @@ export function mount(root: HTMLElement, opts: DhOptions) {
 
     app.innerHTML = topbar() + `
       <div class="card">
-        <h1>✨ یک دورهمی بساز</h1>
-        <p class="muted" style="margin-bottom:14px;font-size:13px">قراری که دوست داری را ثبت کن تا دوستانت زمان و مکانشان را هماهنگ کنند:</p>
+        <h1 id="home_hero_h1">✨ یک دورهمی بساز</h1>
+        <p class="muted" id="home_hero_sub" style="margin-bottom:14px;font-size:13px">قراری که دوست داری را ثبت کن تا دوستانت زمان و مکانشان را هماهنگ کنند:</p>
 
         <div class="seg" style="margin-bottom:14px">
           <button type="button" id="mode_create_tab" class="on">✨ ساخت ایونت</button>
@@ -861,7 +936,10 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         <div id="create_pane">
           <div style="margin-bottom:14px">
             <label class="f" style="margin-top:2px;font-weight:700">موضوع یا ایدهٔ قرار چیه؟</label>
-            <input type="text" id="c_title" maxlength="80" placeholder="مثلاً: کافه و گپ، دویدن صبحگاهی، بردگیم…" style="font-size:15px;padding:10px 12px">
+            <input type="text" id="c_title" list="c_idea_datalist" maxlength="80" placeholder="انتخاب کن یا خودت بنویس: کافه، دویدن، بردگیم…" style="font-size:15px;padding:10px 12px">
+            <datalist id="c_idea_datalist">
+              ${EVENT_IDEAS.map(idea => `<option value="${esc(idea.title)}">${esc(idea.label)}</option>`).join("")}
+            </datalist>
             <div class="quick-ideas" id="c_idea_chips">
               ${EVENT_IDEAS.map(idea => `
                 <span class="qidea" data-idea="${idea.k}">${idea.icon} ${esc(idea.label)}</span>
@@ -869,25 +947,19 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             </div>
           </div>
 
-          <div class="row" style="gap:10px;margin-bottom:14px;align-items:flex-end;flex-wrap:wrap">
-            <div style="flex:1;min-width:130px">
-              <label class="f" style="margin-top:0">برگزارکننده</label>
-              <input type="text" id="c_org" maxlength="40" placeholder="مثلاً مریم" value="${esc(myName)}" style="height:42px">
-            </div>
-            <div style="flex:1.4;min-width:170px">
-              <label class="f" style="margin-top:0">تعداد هم‌پایان</label>
-              <div class="seg sm" style="margin:0;height:42px;display:flex;align-items:center">
-                <button type="button" id="c_tgt_group" class="on" style="height:34px;display:flex;align-items:center;justify-content:center">👥 گروهی</button>
-                <button type="button" id="c_tgt_pair" style="height:34px;display:flex;align-items:center;justify-content:center">👯‍♀️ دونفره (۱ به ۱)</button>
-              </div>
+          <div style="margin-bottom:14px">
+            <label class="f" style="margin-top:0">تعداد هم‌پایان</label>
+            <div class="seg sm" style="margin:0;height:40px;display:flex;align-items:center">
+              <button type="button" id="c_tgt_group" class="on" style="height:32px;display:flex;align-items:center;justify-content:center;white-space:nowrap">👥 گروهی</button>
+              <button type="button" id="c_tgt_pair" style="height:32px;display:flex;align-items:center;justify-content:center;white-space:nowrap">👯‍♀️ دونفره (۱ به ۱)</button>
             </div>
           </div>
 
           <div style="margin-bottom:14px">
             <label class="f" style="margin-top:0">زمان‌بندی دورهمی</label>
             <div class="seg sm" style="margin:0">
-              <button type="button" id="seg_open" class="on">🙋‍♀️ زمان شناور (پیشنهادی)</button>
-              <button type="button" id="seg_fixed">📅 روز و ساعت مشخص</button>
+              <button type="button" id="seg_open" class="on" style="white-space:nowrap">🙋‍♀️ زمان شناور</button>
+              <button type="button" id="seg_fixed" style="white-space:nowrap">📅 تاریخ مشخص</button>
             </div>
             <div class="tiny" style="color:var(--muted);margin-top:4px" id="c_timing_hint">
               دوستان ساعت‌های آزادشان را می‌گویند تا سیستم بهترین زمان مشترک را پیدا کند.
@@ -897,36 +969,95 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           <div id="c_fixed_box" style="display:none;margin-bottom:14px;padding:12px;background:#f8f7fc;border:1px solid #e7e2f5;border-radius:14px">
             <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
               <b style="font-size:13px">📅 تاریخ و ساعت‌های انتخابی:</b>
-              <span class="tiny">می‌توانی چند گزینه بدهی تا بهترین انتخاب شود</span>
+              <span class="tiny">می‌توانی چند گزینه بدهی</span>
             </div>
             <div id="c_opts"></div>
             <button class="btn ghost sm" id="c_add" style="margin-top:4px">+ یک تاریخ دیگر</button>
           </div>
 
+          <div style="margin-bottom:14px">
+            <label class="f" style="margin-top:0">📍 مکان یا محدودهٔ پیشنهادی</label>
+            <div class="seg sm" style="margin:0">
+              <button type="button" id="loc_flex" class="on" style="white-space:nowrap">🗺️ پیشنهاد جمع</button>
+              <button type="button" id="loc_area" style="white-space:nowrap">📍 محدوده / شهر</button>
+              <button type="button" id="loc_exact" style="white-space:nowrap">🏠 مکان مشخص</button>
+            </div>
+            <div class="tiny" style="color:var(--muted);margin-top:4px" id="c_loc_hint">
+              هر کس شهرش را می‌گوید تا منصفانه‌ترین مکان وسط برای همه پیدا شود.
+            </div>
+          </div>
+
+          <div id="c_loc_box" style="display:none;margin-bottom:14px;padding:12px;background:#f8f7fc;border:1px solid #e7e2f5;border-radius:14px">
+            <div class="row" style="gap:8px;margin-bottom:8px;flex-wrap:wrap">
+              <div style="flex:1;min-width:130px">
+                <label class="f" style="margin-top:0;font-size:13px">شهر</label>
+                <select id="c_loc_city">
+                  <option value="">انتخاب شهر (اختیاری)…</option>
+                  ${CITIES.map(c => `<option value="${c.key}">${esc(c.fa)}</option>`).join("")}
+                </select>
+              </div>
+              <div id="c_loc_rad_wrap" style="flex:1;min-width:130px">
+                <label class="f" style="margin-top:0;font-size:13px">شعاع محدوده</label>
+                <select id="c_loc_rad">
+                  <option value="5">تا ۵ کیلومتر (محله)</option>
+                  <option value="10" selected>تا ۱۰ کیلومتر (داخل شهر)</option>
+                  <option value="20">تا ۲۰ کیلومتر (اطراف شهر)</option>
+                  <option value="40">تا ۴۰ کیلومتر (منطقه‌ای)</option>
+                </select>
+              </div>
+            </div>
+            <label class="f" style="margin-top:0;font-size:13px" id="c_loc_place_lbl">محله یا محدودهٔ دلخواه (اختیاری)</label>
+            <input type="text" id="c_loc_place" maxlength="140" placeholder="مثلاً: اطراف ایستگاه مرکزی، نزدیک پارک، مرکز شهر…">
+          </div>
+
+          <div style="margin-bottom:14px">
+            <label class="f" style="margin-top:0">👁️ چه کسانی این ایونت را ببینند؟</label>
+            <div class="seg sm" style="margin:0">
+              <button type="button" id="vis_public" class="on" style="white-space:nowrap">🌍 عمومی</button>
+              <button type="button" id="vis_nearby" style="white-space:nowrap">📍 اطراف من</button>
+              <button type="button" id="vis_private" style="white-space:nowrap">🔒 لینک خصوصی</button>
+            </div>
+            <div class="tiny" style="color:var(--muted);margin-top:4px;margin-bottom:8px" id="c_vis_hint">
+              همه در لیست ایونت‌ها می‌بینند و می‌توانند اعلام حضور کنند.
+            </div>
+            <div class="chips" id="c_aud_chips" style="gap:6px">
+              <span class="chip sm" data-smoke="no_smoke">🚭 بدون سیگار</span>
+              <span class="chip sm" data-smoke="ok">🚬 سیگار اوکیم</span>
+              <span class="chip sm" data-alc="no_alcohol">🥤 بدون الکل</span>
+              <span class="chip sm" data-alc="ok">🍷 الکل اوکیم</span>
+              <span class="chip sm" id="c_wo_chip">👩 فقط خانم‌ها</span>
+            </div>
+          </div>
+
           <details style="margin-bottom:14px;background:#faf9fe;border-radius:12px;border:1.5px dashed #ded7f2;padding:9px 12px">
             <summary style="cursor:pointer;color:var(--p);font-size:13px;font-weight:700;user-select:none;list-style:none;display:flex;align-items:center;justify-content:space-between">
-              <span>⚙️ تنظیمات بیشتر (توضیح دلخواه، فقط خانم‌ها)</span>
+              <span>⚙️ تنظیمات بیشتر (توضیح، تاریخ انقضا، نام برگزارکننده)</span>
               <span style="font-size:11px;opacity:0.7">▼</span>
             </summary>
             <div style="margin-top:10px;padding-top:8px;border-top:1px solid #eeeaf8">
-              <input type="text" id="c_note" maxlength="300" placeholder="توضیح کوتاه (اختیاری): مثلاً صبح‌ها قبل از کار در پارک…" style="margin-bottom:8px">
-              <div class="opt" id="c_wo"><span class="e">👩</span><div><b>فقط برای خانم‌ها</b></div></div>
+              <label class="f" style="margin-top:0">توضیح کوتاه (اختیاری)</label>
+              <input type="text" id="c_note" maxlength="300" placeholder="مثلاً: صبح‌ها قبل از کار در پارک…" style="margin-bottom:8px">
+              <label class="f">⏰ تاریخ انقضا یا مهلت ایونت (اختیاری)</label>
+              <input type="date" id="c_expires" style="margin-bottom:4px">
+              <span class="tiny" id="c_expires_lbl" style="color:var(--p);font-weight:600;display:block;margin-bottom:4px"></span>
+              <span class="tiny" style="color:var(--muted);display:block;margin-bottom:10px">بعد از این تاریخ، ایونت خودکار از دید عموم برداشته می‌شود.</span>
+              <label class="f">نام نمایشی برگزارکننده (اختیاری)</label>
+              <input type="text" id="c_org" maxlength="40" placeholder="مثلاً مریم" value="${esc(myName)}">
             </div>
           </details>
 
           <div id="c_err"></div>
-          <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px">
-            <button class="btn" id="c_go_open" style="font-size:15px;padding:12px 16px;width:100%;font-weight:800;justify-content:center">🚀 ساخت قرار و دریافت لینک اشتراک ✨</button>
-            <button class="btn line sm" id="c_go" style="width:100%;font-size:13px;padding:8px;justify-content:center;color:var(--muted);border-color:#ded7f2">📅 یا با روز و ساعت مشخص</button>
+          <div style="margin-top:14px">
+            <button class="btn block" id="c_go_open" style="font-size:15px;padding:12px 16px;font-weight:800">🚀 ساخت قرار و دریافت لینک اشتراک ✨</button>
           </div>
         </div>
 
         <div id="find_pane" style="display:none">
           <div style="background:#f8f6ff;border:1.5px solid #e1daf7;border-radius:14px;padding:12px 14px;margin-bottom:14px">
             <label class="f" style="margin-top:0">🔑 ورود مستقیم با کد یا لینک دورهمی:</label>
-            <div class="row" style="gap:8px;margin-top:6px">
-              <input type="text" id="join_code_inp" class="code-inp" placeholder="کد یا لینک دورهمی مثلاً: 096be90f6c" style="flex:1">
-              <button type="button" class="btn" id="join_code_go">ورود ←</button>
+            <div class="row" style="gap:8px;margin-top:6px;flex-wrap:nowrap">
+              <input type="text" id="join_code_inp" class="code-inp" placeholder="کد یا لینک مثلاً 096be90f" style="flex:1;min-width:0">
+              <button type="button" class="btn sm" id="join_code_go" style="white-space:nowrap;flex:none;min-height:44px">ورود ←</button>
             </div>
             <p class="tiny" style="margin-top:6px;margin-bottom:0">کد یا لینکی که از دوستت گرفتی را وارد کن تا ساعت‌ها و شهرهایت را بفرستی.</p>
           </div>
@@ -936,7 +1067,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               <h2 style="margin:0;font-size:16px">🌿 ایونت‌ها و قرارهای دوستان</h2>
               <span class="tiny">${fa(mine.length)} قرار فعال</span>
             </div>
-            <p class="muted tiny" style="margin-top:2px;margin-bottom:8px">روی هر ایونت بزن تا ساعت‌های آزاد و شهرهایت را بفرستی؛ سیستم بهترین زمان و شهر مشترک را پیدا می‌کند:</p>
+            ${mine.length ? `<p class="muted tiny" style="margin-top:2px;margin-bottom:8px">روی هر ایونت بزن تا ساعت‌های آزاد و شهرهایت را بفرستی؛ سیستم بهترین زمان و شهر مشترک را پیدا می‌کند:</p>` : ""}
 
             ${mine.length ? `
               <div class="chips" id="meetups_filter_bar" style="gap:5px;margin:6px 0 10px">
@@ -948,39 +1079,46 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               </div>
               <div id="meetups_list_container">
                 ${mine.map(m => {
-                  const org = m.organizer_name ? `برگزارکننده: ${m.organizer_name}` : "دورهمی گروهی";
-                  const cnt = m.count != null ? `${fa(m.count)} نفر اعلام آمادگی کرده‌اند` : "مشاهده و ثبت ترجیحات";
-                  const icon = detectActivityIcon(m.title);
-                  const isPair = detectTargetType(m.title, m.note) === "pair";
-                  let cat = "other";
-                  if (["☕","🍽️"].includes(icon)) cat = "cafe";
-                  else if (["🏃‍♀️","🏸","🚴"].includes(icon)) cat = "sport";
-                  else if (["🎲"].includes(icon)) cat = "game";
-                  else if (["🌳","🧺"].includes(icon)) cat = "walk";
-                  return `
-                  <a class="meetup-item" data-mcat="${cat}" href="/d/${esc(m.code)}${m.admin && m.admin !== "account"?`?admin=${esc(m.admin)}`:""}">
-                    <div style="display:flex;align-items:center;gap:12px">
-                      <div class="av-sm" style="background:${colorOf(m.organizer_name||'د')};width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px;flex:none">${icon}</div>
-                      <div>
-                        <div class="row" style="gap:6px;margin-bottom:3px;flex-wrap:wrap;align-items:center">
-                          <b style="font-size:15px">${esc(m.title || (m.organizer_name ? "دورهمی " + m.organizer_name : "قرار دورهمی"))}</b>
-                          <code class="tiny" style="background:#eeeaf8;padding:1px 6px;border-radius:6px;color:var(--p)">#${esc(m.code)}</code>
-                          <span class="pill sm" style="background:${isPair?"#fff0f6":"#f0f5ff"};color:${isPair?"#d63384":"#0d6efd"}">${isPair ? "👯‍♀️ همراه دونفره" : "👥 گروهی"}</span>
-                        </div>
-                        <div class="tiny">👤 برگزارکننده: <b>${esc(m.organizer_name || "دوستان")}</b> · 👥 ${cnt}</div>
-                      </div>
+              const cnt = m.count != null ? `${fa(m.count)} نفر اعلام آمادگی کرده‌اند` : "مشاهده و ثبت ترجیحات";
+              const icon = detectActivityIcon(m.title);
+              const isPair = detectTargetType(m.title, m.note) === "pair";
+              const isArchived = Boolean(m.is_archived || m.final?.archived);
+              const expDate = m.expires_at || m.final?.expires_at;
+              const isExpired = Boolean(m.is_expired || isDateExpired(expDate));
+              const locSummary = fmtLocation(m.location || m.final?.location, true);
+              let cat = "other";
+              if (["☕","🍽️"].includes(icon)) cat = "cafe";
+              else if (["🏃‍♀️","🏸","🚴"].includes(icon)) cat = "sport";
+              else if (["🎲"].includes(icon)) cat = "game";
+              else if (["🌳","🧺"].includes(icon)) cat = "walk";
+              return `
+              <a class="meetup-item" data-mcat="${cat}" href="/d/${esc(m.code)}${m.admin && m.admin !== "account"?`?admin=${esc(m.admin)}`:""}">
+                <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:200px">
+                  <div class="av-sm" style="background:${colorOf(m.organizer_name||'د')};width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px;flex:none">${icon}</div>
+                  <div>
+                    <div class="row" style="gap:6px;margin-bottom:3px;flex-wrap:wrap;align-items:center">
+                      <b style="font-size:15px">${esc(m.title || (m.organizer_name ? "دورهمی " + m.organizer_name : "قرار دورهمی"))}</b>
+                      <code class="tiny ltr" style="background:#eeeaf8;padding:1px 6px;border-radius:6px;color:var(--p)">#${esc(m.code)}</code>
+                      <span class="pill sm" style="background:${isPair?"#fff0f6":"#f0f5ff"};color:${isPair?"#d63384":"#0d6efd"}">${isPair ? "👯‍♀️ دونفره" : "👥 گروهی"}</span>
+                      ${locSummary ? `<span class="pill sm" style="background:#eefbf6;color:#0e5f4d">${esc(locSummary)}</span>` : ''}
+                      ${isArchived ? '<span class="pill sm" style="background:#fff3d4;color:#8a5a00">📦 آرشیو</span>' : ''}
+                      ${isExpired ? '<span class="pill sm" style="background:#ffe3e3;color:#c92a2a">⏰ منقضی</span>' : ''}
                     </div>
-                    <div class="row" style="gap:4px">
-                      ${m.final?'<span class="pill g">قطعی</span>':""}
-                      ${m.admin?'<span class="pill">مدیریت ⚙️</span>':'<span class="pill" style="font-weight:700">منم می‌تونم بیام 🙋‍♀️</span>'}
-                    </div>
-                  </a>`;
-                }).join("")}
+                    <div class="tiny">👤 برگزارکننده: <b>${esc(m.organizer_name || "دوستان")}</b> · 👥 ${cnt}${expDate && !isExpired && !isArchived ? ` · ⏰ تا ${fmtDate(expDate)}` : ''}</div>
+                  </div>
+                </div>
+                <div class="row" style="gap:4px">
+                  ${isFinalized(m.final)?'<span class="pill g">قطعی</span>':""}
+                  ${m.admin?'<span class="pill">مدیریت ⚙️</span>':'<span class="pill" style="font-weight:700">منم می‌تونم بیام 🙋‍♀️</span>'}
+                </div>
+              </a>`;
+            }).join("")}
               </div>
             ` : `
-              <div style="text-align:center;padding:20px;background:#f9f9fc;border-radius:12px;color:var(--muted)">
-                <div style="font-size:24px;margin-bottom:4px">🌿</div>
-                <p class="tiny" style="margin:0">هنوز ایونتی ثبت نشده است. اولین قرار را در تب «ساخت ایونت» بساز!</p>
+              <div style="text-align:center;padding:24px 16px;background:#f9f9fc;border-radius:14px;color:var(--muted);margin-top:8px">
+                <div style="font-size:28px;margin-bottom:6px">🌿</div>
+                <p class="tiny" style="margin:0 0 12px;font-size:13.5px">هنوز ایونتی ثبت نشده است. اولین قرار را خودت بساز!</p>
+                <button type="button" class="btn ghost sm" id="empty_go_create">✨ ساخت اولین قرار ←</button>
               </div>
             `}
           </div>
@@ -988,7 +1126,6 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       </div>
     `;
     bindLoginLinks();
-    if ($("#open_my_prof_btn")) $("#open_my_prof_btn").onclick = () => openProfileModal();
     if (sharedProf) openProfileModal(sharedProf);
 
     const tabCreate = $("#mode_create_tab");
@@ -999,11 +1136,15 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         tabCreate?.classList.remove("on");
         if ($("#create_pane")) $("#create_pane").style.display = "none";
         if ($("#find_pane")) $("#find_pane").style.display = "block";
+        if ($("#home_hero_h1")) $("#home_hero_h1").textContent = "🔍 پیدا کردن ایونت";
+        if ($("#home_hero_sub")) $("#home_hero_sub").textContent = "کد دورهمی را وارد کن یا از بین قرارهای فعال دوستان انتخاب کن:";
       } else {
         tabCreate?.classList.add("on");
         tabFind?.classList.remove("on");
         if ($("#create_pane")) $("#create_pane").style.display = "block";
         if ($("#find_pane")) $("#find_pane").style.display = "none";
+        if ($("#home_hero_h1")) $("#home_hero_h1").textContent = "✨ یک دورهمی بساز";
+        if ($("#home_hero_sub")) $("#home_hero_sub").textContent = "قراری که دوست داری را ثبت کن تا دوستانت زمان و مکانشان را هماهنگ کنند:";
       }
     }
     if (tabCreate && tabFind) {
@@ -1011,6 +1152,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       tabFind.onclick = () => {
         switchHomeTab(true);
         $("#join_code_inp")?.focus();
+      };
+    }
+    if ($("#empty_go_create")) $("#empty_go_create").onclick = () => switchHomeTab(false);
+    if ($("#c_expires")) {
+      $("#c_expires").oninput = (e) => {
+        const v = e.target.value;
+        if ($("#c_expires_lbl")) $("#c_expires_lbl").textContent = v ? `📅 ${fmtDate(v)}` : "";
       };
     }
     if (location.hash === "#find" || location.hash === "#join" || q.get("tab") === "find" || q.get("tab") === "join") {
@@ -1054,10 +1202,10 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const addOpt = (d="", t="15:00") => { opts.push({d,t}); drawOpts(); };
     function drawOpts(){
       $("#c_opts").innerHTML = opts.map((o,i)=>`
-        <div class="row" style="margin-bottom:8px">
-          <input type="date" data-i="${i}" data-k="d" value="${esc(o.d)}" style="flex:1.3">
-          <input type="time" data-i="${i}" data-k="t" value="${esc(o.t)}" style="flex:1">
-          ${opts.length>1?`<button class="btn line sm" data-del="${i}" aria-label="حذف">✕</button>`:""}
+        <div class="row" style="margin-bottom:8px;flex-wrap:nowrap;gap:6px">
+          <input type="date" data-i="${i}" data-k="d" value="${esc(o.d)}" style="flex:1.3;min-width:0;padding:9px 8px">
+          <input type="time" data-i="${i}" data-k="t" value="${esc(o.t)}" style="flex:1;min-width:0;padding:9px 8px">
+          ${opts.length>1?`<button class="btn line sm" data-del="${i}" aria-label="حذف" style="flex:none;padding:6px 10px">✕</button>`:""}
         </div>`).join("");
       $("#c_opts").querySelectorAll("input").forEach(inp => inp.oninput = () => opts[inp.dataset.i][inp.dataset.k] = inp.value);
       $("#c_opts").querySelectorAll("[data-del]").forEach(b => b.onclick = () => { opts.splice(+b.dataset.del,1); drawOpts(); });
@@ -1083,8 +1231,72 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     };
     if ($("#seg_open")) $("#seg_open").onclick = () => setSegMode(true);
     if ($("#seg_fixed")) $("#seg_fixed").onclick = () => setSegMode(false);
+
+    let locMode = "flexible";
+    const setLocMode = (mode) => {
+      locMode = mode;
+      $("#loc_flex")?.classList.toggle("on", mode === "flexible");
+      $("#loc_area")?.classList.toggle("on", mode === "area");
+      $("#loc_exact")?.classList.toggle("on", mode === "exact");
+      if ($("#c_loc_hint")) {
+        $("#c_loc_hint").textContent = mode === "flexible"
+          ? "هر کس شهرش را می‌گوید تا منصفانه‌ترین مکان وسط برای همه پیدا شود."
+          : mode === "area"
+            ? "یک شهر یا محدوده پیشنهاد بده تا در همان اطراف جای مناسب پیدا کنید."
+            : "اگر کافه، پارک یا آدرس خاصی مدنظرت هست همین‌جا بنویس.";
+      }
+      if ($("#c_loc_box")) $("#c_loc_box").style.display = mode === "flexible" ? "none" : "block";
+      if ($("#c_loc_rad_wrap")) $("#c_loc_rad_wrap").style.display = mode === "area" ? "block" : "none";
+      if ($("#c_loc_place_lbl")) {
+        $("#c_loc_place_lbl").textContent = mode === "exact" ? "اسم مکان یا آدرس پیشنهادی" : "محله یا محدودهٔ دلخواه (اختیاری)";
+      }
+      if ($("#c_loc_place")) {
+        $("#c_loc_place").placeholder = mode === "exact"
+          ? "مثلاً: کافه بهار، پارک کرالینگسه بوس، یا آدرس دقیق…"
+          : "مثلاً: اطراف ایستگاه مرکزی، نزدیک پارک، مرکز شهر…";
+      }
+    };
+    if ($("#loc_flex")) $("#loc_flex").onclick = () => setLocMode("flexible");
+    if ($("#loc_area")) $("#loc_area").onclick = () => setLocMode("area");
+    if ($("#loc_exact")) $("#loc_exact").onclick = () => setLocMode("exact");
+
+    let visMode = "public";
+    let smokePref = "any";
+    let alcPref = "any";
+    const setVisMode = (mode) => {
+      visMode = mode;
+      $("#vis_public")?.classList.toggle("on", mode === "public");
+      $("#vis_nearby")?.classList.toggle("on", mode === "nearby");
+      $("#vis_private")?.classList.toggle("on", mode === "private");
+      if ($("#c_vis_hint")) {
+        $("#c_vis_hint").textContent = mode === "public"
+          ? "همه در لیست ایونت‌ها می‌بینند و می‌توانند اعلام حضور کنند."
+          : mode === "nearby"
+            ? "به کاربرانی که دور و بر همین شهر/محدوده هستند نمایش داده می‌شود."
+            : "در لیست عمومی نشان داده نمی‌شود؛ فقط کسانی که لینک یا کد را برایشان بفرستی می‌بینند.";
+      }
+    };
+    if ($("#vis_public")) $("#vis_public").onclick = () => setVisMode("public");
+    if ($("#vis_nearby")) $("#vis_nearby").onclick = () => setVisMode("nearby");
+    if ($("#vis_private")) $("#vis_private").onclick = () => setVisMode("private");
+
+    $("#c_aud_chips")?.querySelectorAll("[data-smoke]").forEach(el => {
+      el.onclick = () => {
+        const v = el.dataset.smoke;
+        smokePref = smokePref === v ? "any" : v;
+        $("#c_aud_chips").querySelectorAll("[data-smoke]").forEach(x => x.classList.toggle("on", x.dataset.smoke === smokePref));
+      };
+    });
+    $("#c_aud_chips")?.querySelectorAll("[data-alc]").forEach(el => {
+      el.onclick = () => {
+        const v = el.dataset.alc;
+        alcPref = alcPref === v ? "any" : v;
+        $("#c_aud_chips").querySelectorAll("[data-alc]").forEach(x => x.classList.toggle("on", x.dataset.alc === alcPref));
+      };
+    });
+
     let wo = false;
-    $("#c_wo").onclick = e => { wo = !wo; e.currentTarget.classList.toggle("on", wo); };
+    if ($("#c_wo_chip")) $("#c_wo_chip").onclick = e => { wo = !wo; e.currentTarget.classList.toggle("on", wo); };
 
     let currentTarget = "group";
     const updateTargetUI = (tgt) => {
@@ -1092,14 +1304,11 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       $("#c_tgt_group")?.classList.toggle("on", tgt === "group");
       $("#c_tgt_pair")?.classList.toggle("on", tgt === "pair");
       const btnOpen = $("#c_go_open");
-      const btnFixed = $("#c_go");
       if (btnOpen) {
         if (!openSchedule) {
           btnOpen.textContent = tgt === "pair" ? "👯‍♀️ ثبت قرار دو‌نفره با این تاریخ‌ها ✨" : "📅 ساخت دورهمی با این تاریخ‌ها ✨";
-          if (btnFixed) btnFixed.textContent = "🙋‍♀️ زمان شناور";
         } else {
           btnOpen.textContent = tgt === "pair" ? "👯‍♀️ ساخت قرار همراهی و دریافت لینک ✨" : "🚀 ساخت قرار و دریافت لینک اشتراک ✨";
-          if (btnFixed) btnFixed.textContent = "📅 با روز و ساعت مشخص";
         }
       }
     };
@@ -1156,23 +1365,56 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         : (orgName ? `دورهمی ${orgName} ✨` : (isOpen ? "بریم بیرون؟ ✨" : "دورهمی ✨"));
       const title = rawTitle || defaultTitle;
       const good = isOpen ? [] : opts.filter(o => o.d).slice(0,10);
-      if (!isOpen && !good.length) { $("#c_err").innerHTML = `<div class="err">حداقل یک روز انتخاب کن (یا دکمهٔ «بریم بیرون؟ بدون تعیین وقت» را بزن).</div>`; return; }
-      const b = isOpen ? $("#c_go_open") : $("#c_go"); b.disabled = true; b.innerHTML = `<span class="spin"></span>`;
+      if (!isOpen && !good.length) { $("#c_err").innerHTML = `<div class="err">حداقل یک روز انتخاب کن (یا گزینهٔ «زمان شناور» را بزن).</div>`; return; }
+      const b = $("#c_go_open"); b.disabled = true; b.innerHTML = `<span class="spin"></span>`;
       let note = ($("#c_note")?.value || "").trim();
       if (currentTarget === "pair" && !note.includes("همراه دو‌نفره")) {
         note = `[همراه دو‌نفره] ${note}`.trim();
       }
       try {
+        const expDate = $("#c_expires")?.value || null;
+        let locPayload = null;
+        if (locMode !== "flexible") {
+          const cityKey = $("#c_loc_city")?.value || "";
+          const cityObj = cityKey ? cityByKey(cityKey) : null;
+          const placeVal = ($("#c_loc_place")?.value || "").trim();
+          const radVal = locMode === "area" ? Number($("#c_loc_rad")?.value || 10) : undefined;
+          if (cityKey || placeVal) {
+            locPayload = {
+              mode: locMode,
+              city: cityKey,
+              city_label: cityObj ? cityObj.fa : "",
+              radius_km: radVal,
+              place: placeVal,
+            };
+          }
+        }
+        const audPayload = (visMode !== "public" || smokePref !== "any" || alcPref !== "any")
+          ? { visibility: visMode, smoke: smokePref, alcohol: alcPref }
+          : null;
         const r = await rpc("dh_create", {p_title:title, p_note:note, p_organizer:orgName, p_options:good, p_women_only:wo});
-        store.set("dh_"+r.code, {title, organizer_name: orgName, admin:r.admin_token});
+        if (expDate || locPayload || audPayload) {
+          try {
+            const editBody: any = { code: r.code, admin_token: r.admin_token, action: "edit" };
+            if (expDate) editBody.expires_at = expDate;
+            if (locPayload) editBody.location = locPayload;
+            if (audPayload) editBody.audience = audPayload;
+            await fetch("/api/d/manage", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(editBody)
+            });
+          } catch(e){}
+        }
+        store.set("dh_"+r.code, {title, organizer_name: orgName, admin:r.admin_token, location: locPayload, audience: audPayload});
+        profilesLoaded = false;
         go(`/d/${r.code}?admin=${r.admin_token}&new=1`);
       } catch(e){
         $("#c_err").innerHTML = `<div class="err">${esc(errMsg(e))}</div>`;
         b.disabled=false;
-        b.textContent = isOpen ? (currentTarget === "pair" ? "👯‍♀️ ساخت قرار همراهی و گرفتن کد و لینک ✨" : "🙋‍♀️ ساخت دورهمی باز و گرفتن کد و لینک ✨") : "📅 ساخت با روز و ساعت مشخص";
+        updateTargetUI(currentTarget);
       }
     }
-    $("#c_go").onclick = () => createMeetup(false);
     $("#c_go_open").onclick = () => createMeetup(openSchedule);
   }
 
@@ -1183,7 +1425,12 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     app.innerHTML = `<div class="center" style="padding:60px 0"><span class="spin"></span></div>`;
     try { M = await rpc("dh_get", {p_code:code, p_admin:ADMIN}); }
     catch(e){ app.innerHTML = `<div class="card"><div class="err">${esc(errMsg(e))}</div><a class="btn" href="/d">صفحهٔ اول</a></div>`; return; }
-    if (!M) { app.innerHTML = `<div class="card"><h2>این لینک پیدا نشد 😕</h2><p class="muted">شاید برگزارکننده پاکش کرده باشد.</p><a class="btn" href="/d">یک دورهمی تازه بساز</a></div>`; return; }
+    if (!M) {
+      try { localStorage.removeItem("dh_"+code); } catch(e){}
+      profilesLoaded = false;
+      app.innerHTML = `<div class="card"><h2>این لینک پیدا نشد 😕</h2><p class="muted">شاید برگزارکننده پاکش کرده باشد.</p><a class="btn" href="/d">یک دورهمی تازه بساز</a></div>`;
+      return;
+    }
     const s = store.get("dh_"+code) || {};
     if (M.is_admin && M.admin_token) ADMIN = M.admin_token;
     if (M.my_edit) s.edit = M.my_edit;                // signed in: my answer follows me across devices
@@ -1197,7 +1444,8 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   }
 
   function shareText(){
-    return `سلام 🌿 برای «${M.title}» (کد دورهمی: ${M.code}) این لینک را باز کنید و بگویید چه ساعت‌هایی و تا چه محدوده‌ای روی نقشه می‌توانید بیایید:\n${linkFor(M.code)}`;
+    const locTxt = fmtLocation(M.final?.location);
+    return `سلام 🌿 برای «${M.title}» (کد دورهمی: ${M.code})${locTxt ? `\n${locTxt}` : ""}\nاین لینک را باز کنید و بگویید چه ساعت‌هایی و تا چه محدوده‌ای روی نقشه می‌توانید بیایید:\n${linkFor(M.code)}`;
   }
   function shareButtons(){
     return `
@@ -1211,7 +1459,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       <div class="copybox"><code>${esc(linkFor(M.code))}</code><button class="btn sm" id="cp">کپی لینک</button></div>
       <div class="row" style="margin-top:10px">
         <a class="btn wa grow" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(shareText())}">واتس‌اپ</a>
-        <a class="btn line grow" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(linkFor(M.code))}&text=${encodeURIComponent(shareText().split("\n")[0])}">تلگرام</a>
+        <a class="btn ghost grow" style="background:#e8f4fd;color:#0088cc" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(linkFor(M.code))}&text=${encodeURIComponent(shareText().split("\n")[0])}">تلگرام</a>
         ${navigator.share?`<button class="btn line grow" id="nshare">بیشتر…</button>`:""}
       </div>`;
   }
@@ -1222,17 +1470,50 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   }
   function createdPage(){
     const adminLink = `${linkFor(M.code)}?admin=${ADMIN}`;
+    const isArchived = Boolean(M.is_archived || M.final?.archived);
+    const expDate = M.expires_at || M.final?.expires_at;
+    const isExpired = Boolean(M.is_expired || isDateExpired(expDate));
+    const locLine = fmtLocation(M.final?.location);
+    const audBadges = fmtAudience(M.final?.audience, Boolean(M.women_only));
     app.innerHTML = topbar() + `
-      <header class="top"><span class="logo">${detectActivityIcon(M.title)}</span><div><b>${esc(M.title)}</b><small>ساخته شد · کد: #${esc(M.code)}</small></div></header>
-      <div class="card"><div class="hero-e">🎉</div><h1>آماده است!</h1>
+      <header class="top"><span class="logo">${detectActivityIcon(M.title)}</span><div><b>${esc(M.title)}</b><small>ساخته شد · کد: <span class="ltr">#${esc(M.code)}</span></small></div></header>
+      ${isArchived ? `<div class="okbox" style="margin:8px 0;background:#fff8e6;border-color:#f6d899;color:#8a5a00">📦 <b>این دورهمی آرشیو شده است</b> (فقط برای افراد دارای لینک قابل مشاهده است).</div>` : ""}
+      ${isExpired ? `<div class="okbox" style="margin:8px 0;background:#fff0f0;border-color:#ffd0d0;color:#c92a2a">⏰ <b>مهلت یا تاریخ انقضای این دورهمی به پایان رسیده است.</b></div>` : (expDate ? `<div class="tiny" style="color:var(--muted);margin-bottom:6px">⏰ مهلت اعلام حضور تا: <b>${fmtDate(expDate)}</b></div>` : "")}
+      ${locLine ? `<div class="okbox" style="margin:8px 0;background:#eefbf6;border-color:#b7ebd6;color:#0e5f4d">${esc(locLine)}</div>` : ""}
+      ${audBadges.length ? `<div class="row" style="gap:6px;margin:6px 0 8px">${audBadges.map(b => `<span class="pill sm" style="background:#f3f0ff;color:var(--p)">${esc(b)}</span>`).join("")}</div>` : ""}
+      <div class="card"><div class="row" style="gap:10px;margin-bottom:6px"><span class="hero-e" style="font-size:34px">🎉</span><h1 style="margin:0">آماده است!</h1></div>
         <p>کد یا لینک زیر را برای دوستانت بفرست تا ساعت‌ها و محدودهٔ مکانشان را روی نقشه بزنند:</p>${shareButtons()}</div>
       <div class="card"><h2>🔑 لینک مخصوص خودت (برگزارکننده)</h2>
-        <p class="muted">با این لینک می‌توانی آخر کار روز و جا را «قطعی» کنی. این را در گروه نفرست؛ برای خودت نگه دار (مثلاً در «Saved messages»).${USER?" چون وارد همراه شده‌ای، از «بریم بیرون» هم همیشه به آن دسترسی داری.":""}</p>
+        <p class="muted">با این لینک می‌توانی آخر کار روز و جا را «قطعی» کنی یا ایونت را ویرایش و پاک کنی. این را در گروه نفرست؛ برای خودت نگه دار (مثلاً در <bdi dir="ltr">Saved messages</bdi>).${USER?" چون وارد همراه شده‌ای، از «بریم بیرون» هم همیشه به آن دسترسی داری.":""}</p>
         <div class="copybox"><code>${esc(adminLink)}</code><button class="btn sm ghost" id="cpa">کپی</button></div></div>
+      
+      ${!USER ? `
+      <div class="card" id="post_create_auth_box" style="background:linear-gradient(135deg, #fbfaff 0%, #f4f0fd 100%);border:1.5px solid #ded5f7;border-radius:14px;padding:14px 16px;margin:12px 0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="font-size:20px">🔐</span>
+          <b style="font-size:15px">دوست داری این ایونت روی حسابت ذخیره بشه؟</b>
+          <span class="pill sm" style="background:#fff;color:var(--p)">اختیاری</span>
+        </div>
+        <p class="muted tiny" style="margin:0 0 12px;line-height:1.6">
+          ایونتت ساخته شد! اگر می‌خواهی در هر گوشی یا سیستمی به آن دسترسی داشته باشی و وقتی دوستانت اعلام حضور کردند باخبر شوی، می‌توانی حسابت را ثبت کنی (اجباری نیست):
+        </p>
+        <div class="row" style="gap:8px;flex-wrap:wrap;justify-content:flex-start">
+          <a href="/login?next=${encodeURIComponent(`/d/${M.code}?admin=${ADMIN}`)}" class="btn ghost sm" data-ext="1" data-login="1">✨ ذخیره با ایمیل یا شماره موبایل</a>
+          <button type="button" class="btn line sm" id="post_create_dismiss_btn">فعلاً مهمان می‌مانم</button>
+        </div>
+      </div>` : ""}
+
       <a class="btn block" href="/d/${M.code}?admin=${ADMIN}&form=1">حالا فرم خودم را پر کنم ←</a>`;
     bindLoginLinks();
     bindShare();
     $("#cpa").onclick = async () => { try { await navigator.clipboard.writeText(adminLink); toast("لینک برگزارکننده کپی شد ✓"); } catch(e){} };
+    const disBtn = $("#post_create_dismiss_btn");
+    if (disBtn) {
+      disBtn.onclick = () => {
+        $("#post_create_auth_box")?.remove();
+        toast("به عنوان مهمان ادامه می‌دهی ✓");
+      };
+    }
   }
 
   /* ============ the form (wizard) ============ */
@@ -1588,7 +1869,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         <div class="step-h"><span>${esc(s.t)}</span><span>${quick ? `${fa([idx("hi"),idx("avail"),idx("review")].indexOf(i)+1 || 2)} از ۳ · سریع` : `${fa(i+1)} از ${fa(steps.length)}`}</span></div>
         <div class="prog"><i style="width:${quick ? (([idx("hi"),idx("avail"),idx("review")].indexOf(i)+1 || 2)/3*100) : (i+1)/steps.length*100}%"></i></div>
         <div class="card">${s.draw()}</div><div id="f_err"></div>
-        ${i===0 ? `<div class="row"><a href="/d/${CODE}?tab=result" class="btn line sm">${edit?"دیدن نتیجه بدون تغییر":"اول فقط نتیجه را ببینم"}</a></div>`:""}
+        ${i===0 ? `<div class="row"><a href="/d/${CODE}?${ADMIN?`admin=${esc(ADMIN)}&`:""}tab=result" class="btn line sm">${edit?"دیدن نتیجه بدون تغییر":"اول فقط نتیجه را ببینم"}</a></div>`:""}
         <div class="bar"><div class="in">
           ${i>0?`<button class="btn line" id="f_back">قبلی</button>`:""}
           <button class="btn grow" id="f_next">${i===steps.length-1?(edit?"ذخیرهٔ تغییرات ✓":"ثبت و دیدن نتیجه ✓"):"بعدی"}</button>
@@ -1704,23 +1985,44 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   function resultPage(){
     const A = analyse();
     const my = store.get("dh_"+CODE) || {};
+    const isArchived = Boolean(M.is_archived || M.final?.archived);
+    const expDate = M.expires_at || M.final?.expires_at;
+    const isExpired = Boolean(M.is_expired || isDateExpired(expDate));
+    const locLine = fmtLocation(M.final?.location);
+    const audBadges = fmtAudience(M.final?.audience, Boolean(M.women_only));
     app.innerHTML = topbar() + `
       <header class="top"><span class="logo">${detectActivityIcon(M.title)}</span><div><b>${esc(M.title)}</b><small>${fa(A.n)} نفر فرم را پر کرده‌اند${M.organizer_name?" · برگزارکننده: "+esc(M.organizer_name):""}</small></div></header>
+      ${isArchived ? `<div class="okbox" style="margin:8px 0;background:#fff8e6;border-color:#f6d899;color:#8a5a00">📦 <b>این دورهمی آرشیو شده است</b> (از لیست عمومی پنهان است اما با لینک در دسترس است).</div>` : ""}
+      ${isExpired ? `<div class="okbox" style="margin:8px 0;background:#fff0f0;border-color:#ffd0d0;color:#c92a2a">⏰ <b>مهلت اعلام حضور یا تاریخ انقضای این دورهمی به پایان رسیده است.</b></div>` : (expDate ? `<div class="tiny" style="color:var(--muted);margin-bottom:6px">⏰ مهلت اعلام حضور تا: <b>${fmtDate(expDate)}</b></div>` : "")}
+      ${locLine ? `<div class="okbox" style="margin:8px 0;background:#eefbf6;border-color:#b7ebd6;color:#0e5f4d">${esc(locLine)}</div>` : ""}
+      ${audBadges.length ? `<div class="row" style="gap:6px;margin:6px 0 8px">${audBadges.map(b => `<span class="pill sm" style="background:#f3f0ff;color:var(--p)">${esc(b)}</span>`).join("")}</div>` : ""}
       ${detectTargetType(M.title, M.note) === "pair" ? `<div class="pill sm" style="background:#fff0f6;color:#d63384;display:inline-block;margin-bottom:8px">👯‍♀️ قرار همراهی دو‌نفره (هم‌پا)</div>` : ""}
       ${M.note ? `<div class="okbox" style="margin:8px 0;background:#f6f4fe;border-color:#d7cbfa">💬 <b>پیام ${esc(M.organizer_name || "برگزارکننده")}:</b> ${esc(M.note.replace(/^\[همراه دو‌نفره\]\s*/, ""))}</div>` : ""}
-      ${M.final ? finalCard(M.final) : ""}
+      ${isFinalized(M.final) ? finalCard(M.final) : ""}
       <div class="tabs">
-        ${[["result","🧭 نتیجه"],["people","👯‍♀️ آدم‌ها"],["ice","🧊 یخ‌شکن"],["share","📤 دعوت"]].map(([k,l])=>`<span class="tab ${TAB===k?"on":""}" data-tab="${k}">${l}</span>`).join("")}
+        ${[["result","🧭 نتیجه"],["people","👯‍♀️ آدم‌ها"],["ice","🧊 یخ‌شکن"],["share", ADMIN ? "⚙️ مدیریت" : "📤 دعوت"]].map(([k,l])=>`<span class="tab ${TAB===k?"on":""}" data-tab="${k}">${l}</span>`).join("")}
       </div>
       <div id="tabc"></div>
       ${memberCard()}
-      <div class="row" style="margin-top:14px">
-        <a class="btn line sm" href="/d/${CODE}?form=1">✏️ ویرایش فرم من</a>
-        ${my.edit?`<button class="btn line sm" id="del_me">🗑️ پاک کردن جواب من</button>`:`<a class="btn sm" href="/d/${CODE}?form=1">📝 پر کردن فرم</a>`}
+      <div class="row" style="margin-top:14px;flex-wrap:wrap;gap:6px;justify-content:flex-start">
+        ${my.edit
+          ? `<a class="btn line sm" href="/d/${CODE}?form=1">✏️ ویرایش فرم من</a><button class="btn line sm" id="del_me">🗑️ پاک کردن جواب من</button>`
+          : `<a class="btn sm" href="/d/${CODE}?form=1">📝 پر کردن فرم</a>`}
+        ${ADMIN ? `<button class="btn line sm" id="quick_admin_btn" style="color:var(--p);font-weight:700">⚙️ مدیریت و حذف ایونت</button>` : ""}
         <a class="btn line sm" href="/d">+ دورهمی تازه</a>
       </div>
       <p class="tiny" style="margin-top:10px">زمان‌های راه تخمینی‌اند (بر اساس فاصله). برای مسیر دقیق از <a href="https://9292.nl/" target="_blank" rel="noopener">9292</a> یا گوگل‌مپ استفاده کن. ${my.name?`تو با اسم «${esc(my.name)}» پر کرده‌ای.`:""}</p>`;
     root.querySelectorAll("[data-tab]").forEach(t => t.onclick = () => { TAB = t.dataset.tab; resultPage(); });
+    const qAdminBtn = $("#quick_admin_btn");
+    if (qAdminBtn) {
+      qAdminBtn.onclick = () => {
+        TAB = "share";
+        resultPage();
+        setTimeout(() => {
+          $("#a_manage_card")?.scrollIntoView({ behavior: "smooth" });
+        }, 100);
+      };
+    }
     if ($("#del_me")) $("#del_me").onclick = async () => {
       if (!confirm("جوابت کامل پاک شود؟")) return;
       try { await rpc("dh_delete_mine", {p_code:CODE, p_edit:my.edit}); store.set("dh_"+CODE, {title:M.title, admin:my.admin}); toast("پاک شد"); go(`/d/${CODE}`); } catch(e){ toast(errMsg(e)); }
@@ -1985,39 +2287,246 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const bestSlot = A.slots[0], bestHub = A.hubs[0];
     const sel = (bestSlot && !f.d) ? bestSlot.i : M.options.findIndex(o => o.d === f.d && o.t === f.t);
     const defaultDate = f.d || new Date(Date.now() + 2*86400000).toISOString().slice(0,10);
-    return `<div class="card"><h2>🔑 قطعی کردن (فقط تو می‌بینی)</h2>
-      <label class="f">روز</label>
-      ${M.options.length
-        ? `<select id="a_slot">${M.options.map((o,i)=>`<option value="${i}" ${i===sel?"selected":""}>${esc(fmtOpt(o))}${A.slots.find(s=>s.i===i)?` — ${fa(A.slots.find(s=>s.i===i).y)} نفر می‌تونن`:""}</option>`).join("")}</select>`
-        : `<input type="date" id="a_date" value="${esc(defaultDate)}">`}
-      <label class="f">ساعت</label><input type="time" id="a_time" value="${esc(f.t || (M.options[Math.max(sel,0)]||{}).t || "16:00")}">
-      <label class="f">شهر</label>
-      <select id="a_city">${CITIES.filter(c=>c.meet).map(c=>`<option value="${c.key}" ${(pick.city||f.city||(bestHub&&bestHub.h.key))===c.key?"selected":""}>${esc(c.fa)}</option>`).join("")}</select>
-      <label class="f">اسم جا</label><input type="text" id="a_venue" maxlength="100" value="${esc(pick.venue||f.venue||"")}" placeholder="از «پیدا کردن جا» انتخاب کن یا بنویس">
-      <label class="f">آدرس (اختیاری)</label><input type="text" id="a_addr" maxlength="150" value="${esc(pick.address||f.address||"")}">
-      <label class="f">یادداشت برای همه (اختیاری)</label><input type="text" id="a_note" maxlength="200" value="${esc(f.note||"")}" placeholder="مثلاً: جلوی در ایستگاه همدیگر را ببینیم">
-      <button class="btn block" id="a_go" style="margin-top:12px">✅ قطعی کن</button>
-      ${M.final?`<button class="btn line sm" id="a_clear" style="margin-top:8px">برداشتن قطعی</button>`:""}
-      <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
-      <button class="btn line sm" id="a_delete" style="color:var(--bad)">🗑️ پاک کردن کل دورهمی و همهٔ جواب‌ها</button></div>`;
+    const isArchived = Boolean(M.is_archived || M.final?.archived);
+    const expDate = M.expires_at || M.final?.expires_at;
+    const expVal = expDate ? String(expDate).slice(0, 10) : "";
+    const loc = f.location || { mode: "flexible", city: "", radius_km: 10, place: "" };
+    const locModeInit = loc.mode || "flexible";
+
+    return `
+      <div class="card" id="a_manage_card">
+        <h2 style="margin:0 0 6px">⚙️ مدیریت ایونت (ویرایش، آرشیو و حذف)</h2>
+        <p class="tiny muted" style="margin-bottom:10px">فقط تو به عنوان برگزارکننده این بخش را می‌بینی:</p>
+        <div class="row" style="gap:8px;margin-bottom:10px;flex-wrap:wrap;justify-content:flex-start">
+          <button type="button" class="btn ghost sm" id="a_btn_edit">✏️ ویرایش مشخصات و مکان</button>
+          <button type="button" class="btn line sm" id="a_btn_archive">
+            ${isArchived ? "📤 بازگردانی از آرشیو" : "📦 آرشیو کردن دورهمی"}
+          </button>
+          <button type="button" class="btn line sm" id="a_delete" style="color:var(--bad);border-color:#f5c2c2">🗑️ پاک کردن کل دورهمی</button>
+        </div>
+
+        <div id="a_edit_box" style="display:none;background:#f9f8fe;border:1.5px solid #ded7f2;border-radius:14px;padding:12px;margin-top:8px">
+          <label class="f" style="margin-top:0">عنوان یا موضوع دورهمی</label>
+          <input type="text" id="ae_title" maxlength="80" value="${esc(M.title || "")}">
+          <label class="f">توضیح کوتاه</label>
+          <input type="text" id="ae_note" maxlength="300" value="${esc(M.note || "")}">
+
+          <label class="f">📍 مکان یا محدودهٔ پیشنهادی</label>
+          <select id="ae_loc_mode" style="margin-bottom:8px">
+            <option value="flexible" ${locModeInit==="flexible"?"selected":""}>🗺️ پیشنهاد جمع (پیدا کردن منصفانه‌ترین مکان وسط)</option>
+            <option value="area" ${locModeInit==="area"?"selected":""}>📍 محدوده / شهر پیشنهادی</option>
+            <option value="exact" ${locModeInit==="exact"?"selected":""}>🏠 مکان مشخص</option>
+          </select>
+          <div id="ae_loc_fields" style="display:${locModeInit==="flexible"?"none":"block"};margin-bottom:8px;padding:10px;background:#fff;border:1px solid #e7e2f5;border-radius:12px">
+            <div class="row" style="gap:8px;margin-bottom:8px;flex-wrap:wrap">
+              <div style="flex:1;min-width:120px">
+                <label class="f" style="margin-top:0;font-size:12.5px">شهر</label>
+                <select id="ae_loc_city">
+                  <option value="">انتخاب شهر…</option>
+                  ${CITIES.map(c => `<option value="${c.key}" ${loc.city===c.key?"selected":""}>${esc(c.fa)}</option>`).join("")}
+                </select>
+              </div>
+              <div id="ae_loc_rad_wrap" style="flex:1;min-width:120px;display:${locModeInit==="area"?"block":"none"}">
+                <label class="f" style="margin-top:0;font-size:12.5px">شعاع محدوده</label>
+                <select id="ae_loc_rad">
+                  ${[5,10,20,40].map(r => `<option value="${r}" ${(loc.radius_km||10)===r?"selected":""}>تا ${fa(r)} کیلومتر</option>`).join("")}
+                </select>
+              </div>
+            </div>
+            <label class="f" style="margin-top:0;font-size:12.5px">اسم مکان یا محله (اختیاری)</label>
+            <input type="text" id="ae_loc_place" maxlength="140" value="${esc(loc.place || "")}" placeholder="مثلاً: اطراف ایستگاه مرکزی یا اسم کافه…">
+          </div>
+
+          <label class="f">⏰ تاریخ انقضا / مهلت (اختیاری)</label>
+          <input type="date" id="ae_expires" value="${esc(expVal)}">
+          <span class="tiny" id="ae_expires_lbl" style="color:var(--p);font-weight:600;display:block;margin-top:4px">${expVal ? `📅 ${fmtDate(expVal)}` : ""}</span>
+          <span class="tiny" style="color:var(--muted);display:block;margin-bottom:10px">بعد از این تاریخ، ایونت خودکار از دید عموم برداشته می‌شود.</span>
+          <div class="opt ${M.women_only ? "on" : ""}" id="ae_wo" style="margin-bottom:10px"><span class="e">👩</span><div><b>فقط برای خانم‌ها</b></div></div>
+          <div class="row" style="gap:8px;margin-top:8px;justify-content:flex-start">
+            <button type="button" class="btn sm" id="ae_save">💾 ذخیرهٔ تغییرات</button>
+            <button type="button" class="btn line sm" id="ae_cancel">انصراف</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card"><h2>🔑 قطعی کردن زمان و مکان</h2>
+        <label class="f">روز</label>
+        ${M.options.length
+          ? `<select id="a_slot">${M.options.map((o,i)=>`<option value="${i}" ${i===sel?"selected":""}>${esc(fmtOpt(o))}${A.slots.find(s=>s.i===i)?` — ${fa(A.slots.find(s=>s.i===i).y)} نفر می‌تونن`:""}</option>`).join("")}</select>`
+          : `<input type="date" id="a_date" value="${esc(defaultDate)}">`}
+        <label class="f">ساعت</label><input type="time" id="a_time" value="${esc(f.t || (M.options[Math.max(sel,0)]||{}).t || "16:00")}">
+        <label class="f">شهر</label>
+        <select id="a_city">${CITIES.filter(c=>c.meet).map(c=>`<option value="${c.key}" ${(pick.city||f.city||loc.city||(bestHub&&bestHub.h.key))===c.key?"selected":""}>${esc(c.fa)}</option>`).join("")}</select>
+        <label class="f">اسم جا</label><input type="text" id="a_venue" maxlength="100" value="${esc(pick.venue||f.venue||(loc.mode==="exact"?loc.place:"")||"")}" placeholder="مثلاً: کافه مرکزی یا پارک">
+        <label class="f">آدرس (اختیاری)</label><input type="text" id="a_addr" maxlength="150" value="${esc(pick.address||f.address||"")}">
+        <label class="f">یادداشت برای همه (اختیاری)</label><input type="text" id="a_note" maxlength="200" value="${esc(f.note||"")}" placeholder="مثلاً: جلوی در ایستگاه همدیگر را ببینیم">
+        <button class="btn block" id="a_go" style="margin-top:12px">✅ قطعی کن</button>
+        ${isFinalized(M.final)?`<button class="btn line sm" id="a_clear" style="margin-top:8px">برداشتن قطعی</button>`:""}
+      </div>`;
   }
   function bindAdmin(A){
     if (!ADMIN || !$("#a_go")) return;
     if ($("#a_slot")) $("#a_slot").onchange = () => { const o = M.options[+$("#a_slot").value]; if (o && o.t) $("#a_time").value = o.t; };
     $("#a_go").onclick = async () => {
       const o = $("#a_slot") ? M.options[+$("#a_slot").value] : {d: ($("#a_date")||{}).value || new Date().toISOString().slice(0,10)};
-      const fin = {d:o.d, t:$("#a_time").value, city:$("#a_city").value, venue:$("#a_venue").value.trim(), address:$("#a_addr").value.trim(), note:$("#a_note").value.trim()};
+      const fin: any = {
+        d: o.d,
+        t: $("#a_time").value,
+        city: $("#a_city").value,
+        venue: $("#a_venue").value.trim(),
+        address: $("#a_addr").value.trim(),
+        note: $("#a_note").value.trim(),
+      };
+      if (M.final?.archived || M.is_archived) fin.archived = true;
+      if (M.final?.expires_at || M.expires_at) fin.expires_at = M.final?.expires_at || M.expires_at;
+      if (M.final?.location) fin.location = M.final.location;
+      if (M.final?.audience) fin.audience = M.final.audience;
       try { await rpc("dh_finalize", {p_code:CODE, p_admin:ADMIN, p_final:fin}); toast("قطعی شد ✓");
         const city = (cityByKey(fin.city)||{}).fa || "";
         const txt = `✅ «${M.title}» قطعی شد:\n📅 ${fmtDate(fin.d)} ساعت ${fin.t}\n📍 ${fin.venue}${city?" — "+city:""}\nجزئیات و تقویم: ${linkFor(CODE)}`;
-        M.final = fin; TAB = "result"; resultPage();
+        M.final = fin; profilesLoaded = false; TAB = "result"; resultPage();
         setTimeout(() => { if (confirm("پیامش را برای گروه در واتس‌اپ بفرستم؟")) window.open("https://wa.me/?text="+encodeURIComponent(txt), "_blank"); }, 300);
       } catch(e){ toast(errMsg(e)); }
     };
-    if ($("#a_clear")) $("#a_clear").onclick = async () => { try { await rpc("dh_finalize", {p_code:CODE, p_admin:ADMIN, p_final:null}); M.final = null; resultPage(); } catch(e){ toast(errMsg(e)); } };
+    if ($("#a_clear")) $("#a_clear").onclick = async () => {
+      const keepMeta: any = {};
+      if (M.final?.archived || M.is_archived) keepMeta.archived = true;
+      if (M.final?.expires_at || M.expires_at) keepMeta.expires_at = M.final?.expires_at || M.expires_at;
+      if (M.final?.location) keepMeta.location = M.final.location;
+      if (M.final?.audience) keepMeta.audience = M.final.audience;
+      const nextFinal = Object.keys(keepMeta).length ? keepMeta : null;
+      try { await rpc("dh_finalize", {p_code:CODE, p_admin:ADMIN, p_final:nextFinal}); M.final = nextFinal; profilesLoaded = false; resultPage(); } catch(e){ toast(errMsg(e)); }
+    };
+    
+    // Edit meetup
+    const editBtn = $("#a_btn_edit");
+    const editBox = $("#a_edit_box");
+    if (editBtn && editBox) {
+      editBtn.onclick = () => {
+        editBox.style.display = editBox.style.display === "none" ? "block" : "none";
+      };
+      if ($("#ae_loc_mode")) {
+        $("#ae_loc_mode").onchange = (e) => {
+          const v = e.target.value;
+          if ($("#ae_loc_fields")) $("#ae_loc_fields").style.display = v === "flexible" ? "none" : "block";
+          if ($("#ae_loc_rad_wrap")) $("#ae_loc_rad_wrap").style.display = v === "area" ? "block" : "none";
+        };
+      }
+      if ($("#ae_expires")) {
+        $("#ae_expires").oninput = (e) => {
+          const v = e.target.value;
+          if ($("#ae_expires_lbl")) $("#ae_expires_lbl").textContent = v ? `📅 ${fmtDate(v)}` : "";
+        };
+      }
+      let woVal = Boolean(M.women_only);
+      if ($("#ae_wo")) $("#ae_wo").onclick = () => {
+        woVal = !woVal;
+        $("#ae_wo").classList.toggle("on", woVal);
+      };
+      if ($("#ae_cancel")) $("#ae_cancel").onclick = () => {
+        editBox.style.display = "none";
+      };
+      if ($("#ae_save")) $("#ae_save").onclick = async () => {
+        const title = ($("#ae_title")?.value || "").trim();
+        if (!title) return toast("عنوان نمی‌تواند خالی باشد");
+        const note = ($("#ae_note")?.value || "").trim();
+        const expires_at = $("#ae_expires")?.value || null;
+        const aeMode = $("#ae_loc_mode")?.value || "flexible";
+        let locPayload = null;
+        if (aeMode !== "flexible") {
+          const cityKey = $("#ae_loc_city")?.value || "";
+          const cityObj = cityKey ? cityByKey(cityKey) : null;
+          const placeVal = ($("#ae_loc_place")?.value || "").trim();
+          const radVal = aeMode === "area" ? Number($("#ae_loc_rad")?.value || 10) : undefined;
+          if (cityKey || placeVal) {
+            locPayload = {
+              mode: aeMode,
+              city: cityKey,
+              city_label: cityObj ? cityObj.fa : "",
+              radius_km: radVal,
+              place: placeVal,
+            };
+          }
+        }
+        const b = $("#ae_save"); b.disabled = true; b.innerHTML = `<span class="spin"></span>`;
+        try {
+          const res = await fetch("/api/d/manage", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ code: CODE, admin_token: ADMIN, action: "edit", title, note, expires_at, women_only: woVal, location: locPayload })
+          });
+          const j = await res.json();
+          if (!res.ok || j.error) throw new Error(j.error || "ذخیره نشد");
+          M.title = title; M.note = note; M.women_only = woVal; M.expires_at = j.expires_at || expires_at;
+          if (!M.final) M.final = {};
+          M.final.expires_at = j.expires_at || expires_at;
+          M.final.location = j.location ?? locPayload;
+          const s = store.get("dh_"+CODE) || {};
+          store.set("dh_"+CODE, {...s, title, location: j.location ?? locPayload});
+          profilesLoaded = false;
+          toast("تغییرات ذخیره شد ✓");
+          resultPage();
+        } catch(e){
+          toast(errMsg(e));
+          b.disabled = false;
+          b.textContent = "💾 ذخیرهٔ تغییرات";
+        }
+      };
+    }
+
+    // Archive / Unarchive meetup
+    const arcBtn = $("#a_btn_archive");
+    if (arcBtn) {
+      arcBtn.onclick = async () => {
+        const isArchived = Boolean(M.is_archived || M.final?.archived);
+        const msg = isArchived
+          ? "این دورهمی از آرشیو خارج شده و دوباره فعال شود؟"
+          : "این دورهمی آرشیو شود؟ (از لیست عمومی پنهان می‌شود اما با لینک قابل دسترسی است)";
+        if (!confirm(msg)) return;
+        arcBtn.disabled = true;
+        try {
+          const res = await fetch("/api/d/manage", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ code: CODE, admin_token: ADMIN, action: "archive", is_archived: !isArchived })
+          });
+          const j = await res.json();
+          if (!res.ok || j.error) throw new Error(j.error || "عملیات انجام نشد");
+          M.is_archived = !isArchived;
+          if (!M.final) M.final = {};
+          M.final.archived = !isArchived;
+          profilesLoaded = false;
+          toast(!isArchived ? "دورهمی آرشیو شد 📦" : "دورهمی فعال شد 📤");
+          resultPage();
+        } catch(e){
+          toast(errMsg(e));
+          arcBtn.disabled = false;
+        }
+      };
+    }
+
+    // Delete meetup
     $("#a_delete").onclick = async () => {
       if (!confirm("کل دورهمی و همهٔ جواب‌ها برای همیشه پاک شود؟")) return;
-      try { await rpc("dh_delete_meetup", {p_code:CODE, p_admin:ADMIN}); try { localStorage.removeItem("dh_"+CODE); } catch(e){} go("/d"); } catch(e){ toast(errMsg(e)); }
+      try {
+        let deleted = false;
+        try {
+          const res = await fetch("/api/d/manage", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ code: CODE, admin_token: ADMIN, action: "delete" })
+          });
+          if (res.ok) deleted = true;
+        } catch(e){}
+        if (!deleted) {
+          await rpc("dh_delete_meetup", {p_code:CODE, p_admin:ADMIN});
+          deleted = true;
+        }
+        try { localStorage.removeItem("dh_"+CODE); } catch(e){}
+        profilesLoaded = false;
+        toast("دورهمی پاک شد ✓");
+        go("/d");
+      } catch(e){ toast(errMsg(e)); }
     };
   }
 

@@ -53,7 +53,7 @@ async function fetchFallbackRpcProfiles() {
   ingest(m1, true);
   const uniqueProfiles = Array.from(new Set(byName.values()));
   const recentMeetups = m1
-    ? [{ code: m1.code, title: m1.title, organizer_name: m1.organizer_name, count: m1.count ?? (m1.people?.length || 0), final: m1.final, created_at: m1.created_at }]
+    ? [{ code: m1.code, title: m1.title, organizer_name: m1.organizer_name, count: m1.count ?? (m1.people?.length || 0), final: m1.final, location: m1.final?.location || null, audience: m1.final?.audience || null, expires_at: null, is_archived: false, created_at: m1.created_at }]
     : [];
   return { profiles: uniqueProfiles, recentMeetups };
 }
@@ -86,12 +86,16 @@ async function getOrCreateDirectoryMeetupId(db: ReturnType<typeof admin>): Promi
  * plus their recent non-test meetups so returning friends can pick their name and see/reuse their info & free hours.
  */
 export async function GET(req: Request) {
+  const sbUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  if (!sbUrl || sbUrl.includes('example.supabase.co')) {
+    return NextResponse.json({ profiles: [], recentMeetups: [] });
+  }
   const url = new URL(req.url);
   const onlyName = url.searchParams.get('name')?.trim();
   const onlyEmail = url.searchParams.get('email')?.trim().toLowerCase();
   const db = admin();
 
-  const [{ data: rows }, { data: meetups }] = await Promise.all([
+  const [{ data: rows }, meetupRes] = await Promise.all([
     db
       .from('dh_responses')
       .select('id,meetup_id,name,data,public_fields,updated_at')
@@ -99,11 +103,22 @@ export async function GET(req: Request) {
       .limit(200),
     db
       .from('dh_meetups')
-      .select('id,code,title,note,organizer_name,final,created_at')
+      .select('id,code,title,note,organizer_name,final,expires_at,is_archived,created_at')
       .neq('code', DIRECTORY_CODE)
       .order('created_at', { ascending: false })
       .limit(30),
   ]);
+
+  let meetups = meetupRes.data;
+  if (meetupRes.error) {
+    const fbRes = await db
+      .from('dh_meetups')
+      .select('id,code,title,note,organizer_name,final,created_at')
+      .neq('code', DIRECTORY_CODE)
+      .order('created_at', { ascending: false })
+      .limit(30);
+    meetups = fbRes.data as any;
+  }
 
   const meetupById = new Map((meetups ?? []).map((m: any) => [m.id, m]));
   const countByMeetupId = new Map<string, number>();
@@ -168,7 +183,20 @@ export async function GET(req: Request) {
   }
 
   const recentMeetups = (meetups ?? [])
-    .filter((m: any) => !/e2e|تست دورهمی/i.test(m.title ?? ''))
+    .filter((m: any) => {
+      if (/e2e|تست دورهمی/i.test(m.title ?? '')) return false;
+      const isArchived = Boolean(m.is_archived || m.final?.archived);
+      if (isArchived) return false;
+      if (m.final?.audience?.visibility === 'private') return false;
+      const exp = m.expires_at || m.final?.expires_at;
+      if (exp) {
+        const expMs = /^\d{4}-\d{2}-\d{2}$/.test(String(exp))
+          ? new Date(`${exp}T23:59:59.000Z`).getTime()
+          : new Date(exp).getTime();
+        if (!Number.isNaN(expMs) && expMs < Date.now()) return false;
+      }
+      return true;
+    })
     .slice(0, 10)
     .map((m: any) => ({
       code: m.code,
@@ -176,6 +204,10 @@ export async function GET(req: Request) {
       organizer_name: m.organizer_name,
       count: countByMeetupId.get(m.id) ?? 0,
       final: m.final,
+      location: m.final?.location || null,
+      audience: m.final?.audience || null,
+      expires_at: m.expires_at || m.final?.expires_at || null,
+      is_archived: Boolean(m.is_archived || m.final?.archived),
       created_at: m.created_at,
     }));
 
