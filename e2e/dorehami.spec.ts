@@ -137,14 +137,19 @@ test('open "بریم بیرون؟" meetup without preset dates + loading previou
   await expect(page).toHaveURL(/\/d$/);
 });
 
-test('creator: expiry date, edit details, archive/unarchive, and delete', async ({ page }) => {
+test('creator: location/area, expiry date, edit details, archive/unarchive, and delete', async ({ page }) => {
   test.skip(!hasDb, 'no test backend configured');
   page.on('dialog', (d) => (d.message().includes('واتس') ? d.dismiss() : d.accept()));
   await page.goto('/d');
   await page.locator('#c_title').fill('ایونت تست مدیریت');
   await page.locator('#c_org').fill('مریم تست');
+  // Choose suggested area/city
+  await page.locator('#loc_area').click();
+  await page.locator('#c_loc_city').selectOption('delft');
+  await page.locator('#c_loc_place').fill('اطراف مرکز شهر');
   await page.locator('#c_go_open').click();
   await expect(page.getByRole('heading', { name: 'آماده است!' })).toBeVisible();
+  await expect(page.getByText(/محدودهٔ پیشنهادی.*دلفت.*اطراف مرکز شهر/)).toBeVisible();
 
   // Go to result page with admin token
   const url = page.url();
@@ -157,20 +162,25 @@ test('creator: expiry date, edit details, archive/unarchive, and delete', async 
 
   await page.goto(`/d/${code}?admin=${adminToken}&tab=share`);
   await expect(page.locator('#a_btn_edit')).toBeVisible();
+  await expect(page.getByText(/محدودهٔ پیشنهادی.*دلفت/)).toBeVisible();
 
-  // Edit title and expiry date
+  // Edit title, location to exact venue, and expiry date
   await page.locator('#a_btn_edit').click();
   await expect(page.locator('#a_edit_box')).toBeVisible();
   await page.locator('#ae_title').fill('ایونت تست ویرایش‌شده');
+  await page.locator('#ae_loc_mode').selectOption('exact');
+  await page.locator('#ae_loc_place').fill('کافه بهار');
   await page.locator('#ae_expires').fill('2026-12-30');
   await page.locator('#ae_save').click();
   await expect(page.getByText('تغییرات ذخیره شد')).toBeVisible();
   await expect(page.getByText('ایونت تست ویرایش‌شده')).toBeVisible();
+  await expect(page.getByText(/مکان پیشنهادی.*کافه بهار/)).toBeVisible();
   await expect(page.getByText('✅ قطعی شد')).toHaveCount(0);
 
-  // Verify edit & expiry persist across full reload
+  // Verify edit, exact location & expiry persist across full reload
   await page.reload();
   await expect(page.getByText('ایونت تست ویرایش‌شده')).toBeVisible();
+  await expect(page.getByText(/مکان پیشنهادی.*کافه بهار/)).toBeVisible();
   await expect(page.getByText(/مهلت اعلام حضور تا/)).toBeVisible();
   await expect(page.getByText('✅ قطعی شد')).toHaveCount(0);
 

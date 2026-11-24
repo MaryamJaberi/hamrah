@@ -57,6 +57,21 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const ms = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s + "T23:59:59.000Z").getTime() : new Date(s).getTime();
     return !Number.isNaN(ms) && ms < Date.now();
   };
+  const fmtLocation = (loc, compact = false) => {
+    if (!loc || loc.mode === "flexible") return "";
+    const cityFa = loc.city_label || (loc.city ? (cityByKey(loc.city)?.fa || loc.city) : "");
+    if (loc.mode === "exact") {
+      const parts = [loc.place, cityFa].filter(Boolean);
+      if (!parts.length) return "";
+      return compact ? `🏠 ${parts.join(" · ")}` : `🏠 مکان پیشنهادی: ${parts.join(" — ")}`;
+    }
+    const parts = [];
+    if (cityFa) parts.push(cityFa);
+    if (loc.place) parts.push(loc.place);
+    if (loc.radius_km) parts.push(`تا ${fa(loc.radius_km)} کیلومتر`);
+    if (!parts.length) return "";
+    return compact ? `📍 ${parts.join(" · ")}` : `📍 محدودهٔ پیشنهادی: ${parts.join(" · ")}`;
+  };
   const fmtOpt = o => `${fmtDate(o.d)}${o.t ? " · ساعت " + fa(o.t) : ""}`;
   const COLORS = ["#5b2a86","#c2185b","#00796b","#ef6c00","#3949ab","#6d4c41","#2e7d32","#ad1457","#0277bd","#7b1fa2"];
   const colorOf = s => COLORS[[...String(s)].reduce((a,c)=>a+c.charCodeAt(0),0) % COLORS.length];
@@ -956,6 +971,41 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             <button class="btn ghost sm" id="c_add" style="margin-top:4px">+ یک تاریخ دیگر</button>
           </div>
 
+          <div style="margin-bottom:14px">
+            <label class="f" style="margin-top:0">📍 مکان یا محدودهٔ پیشنهادی</label>
+            <div class="seg sm" style="margin:0">
+              <button type="button" id="loc_flex" class="on" style="white-space:nowrap">🗺️ پیشنهاد جمع</button>
+              <button type="button" id="loc_area" style="white-space:nowrap">📍 محدوده / شهر</button>
+              <button type="button" id="loc_exact" style="white-space:nowrap">🏠 مکان مشخص</button>
+            </div>
+            <div class="tiny" style="color:var(--muted);margin-top:4px" id="c_loc_hint">
+              هر کس شهرش را می‌گوید تا منصفانه‌ترین مکان وسط برای همه پیدا شود.
+            </div>
+          </div>
+
+          <div id="c_loc_box" style="display:none;margin-bottom:14px;padding:12px;background:#f8f7fc;border:1px solid #e7e2f5;border-radius:14px">
+            <div class="row" style="gap:8px;margin-bottom:8px;flex-wrap:wrap">
+              <div style="flex:1;min-width:130px">
+                <label class="f" style="margin-top:0;font-size:13px">شهر</label>
+                <select id="c_loc_city">
+                  <option value="">انتخاب شهر (اختیاری)…</option>
+                  ${CITIES.map(c => `<option value="${c.key}">${esc(c.fa)}</option>`).join("")}
+                </select>
+              </div>
+              <div id="c_loc_rad_wrap" style="flex:1;min-width:130px">
+                <label class="f" style="margin-top:0;font-size:13px">شعاع محدوده</label>
+                <select id="c_loc_rad">
+                  <option value="5">تا ۵ کیلومتر (محله)</option>
+                  <option value="10" selected>تا ۱۰ کیلومتر (داخل شهر)</option>
+                  <option value="20">تا ۲۰ کیلومتر (اطراف شهر)</option>
+                  <option value="40">تا ۴۰ کیلومتر (منطقه‌ای)</option>
+                </select>
+              </div>
+            </div>
+            <label class="f" style="margin-top:0;font-size:13px" id="c_loc_place_lbl">محله یا محدودهٔ دلخواه (اختیاری)</label>
+            <input type="text" id="c_loc_place" maxlength="140" placeholder="مثلاً: اطراف ایستگاه مرکزی، نزدیک پارک، مرکز شهر…">
+          </div>
+
           <details style="margin-bottom:14px;background:#faf9fe;border-radius:12px;border:1.5px dashed #ded7f2;padding:9px 12px">
             <summary style="cursor:pointer;color:var(--p);font-size:13px;font-weight:700;user-select:none;list-style:none;display:flex;align-items:center;justify-content:space-between">
               <span>⚙️ تنظیمات بیشتر (توضیح، تاریخ انقضا، فقط خانم‌ها)</span>
@@ -1011,6 +1061,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               const isArchived = Boolean(m.is_archived || m.final?.archived);
               const expDate = m.expires_at || m.final?.expires_at;
               const isExpired = Boolean(m.is_expired || isDateExpired(expDate));
+              const locSummary = fmtLocation(m.location || m.final?.location, true);
               let cat = "other";
               if (["☕","🍽️"].includes(icon)) cat = "cafe";
               else if (["🏃‍♀️","🏸","🚴"].includes(icon)) cat = "sport";
@@ -1025,6 +1076,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
                       <b style="font-size:15px">${esc(m.title || (m.organizer_name ? "دورهمی " + m.organizer_name : "قرار دورهمی"))}</b>
                       <code class="tiny ltr" style="background:#eeeaf8;padding:1px 6px;border-radius:6px;color:var(--p)">#${esc(m.code)}</code>
                       <span class="pill sm" style="background:${isPair?"#fff0f6":"#f0f5ff"};color:${isPair?"#d63384":"#0d6efd"}">${isPair ? "👯‍♀️ دونفره" : "👥 گروهی"}</span>
+                      ${locSummary ? `<span class="pill sm" style="background:#eefbf6;color:#0e5f4d">${esc(locSummary)}</span>` : ''}
                       ${isArchived ? '<span class="pill sm" style="background:#fff3d4;color:#8a5a00">📦 آرشیو</span>' : ''}
                       ${isExpired ? '<span class="pill sm" style="background:#ffe3e3;color:#c92a2a">⏰ منقضی</span>' : ''}
                     </div>
@@ -1155,6 +1207,35 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     };
     if ($("#seg_open")) $("#seg_open").onclick = () => setSegMode(true);
     if ($("#seg_fixed")) $("#seg_fixed").onclick = () => setSegMode(false);
+
+    let locMode = "flexible";
+    const setLocMode = (mode) => {
+      locMode = mode;
+      $("#loc_flex")?.classList.toggle("on", mode === "flexible");
+      $("#loc_area")?.classList.toggle("on", mode === "area");
+      $("#loc_exact")?.classList.toggle("on", mode === "exact");
+      if ($("#c_loc_hint")) {
+        $("#c_loc_hint").textContent = mode === "flexible"
+          ? "هر کس شهرش را می‌گوید تا منصفانه‌ترین مکان وسط برای همه پیدا شود."
+          : mode === "area"
+            ? "یک شهر یا محدوده پیشنهاد بده تا در همان اطراف جای مناسب پیدا کنید."
+            : "اگر کافه، پارک یا آدرس خاصی مدنظرت هست همین‌جا بنویس.";
+      }
+      if ($("#c_loc_box")) $("#c_loc_box").style.display = mode === "flexible" ? "none" : "block";
+      if ($("#c_loc_rad_wrap")) $("#c_loc_rad_wrap").style.display = mode === "area" ? "block" : "none";
+      if ($("#c_loc_place_lbl")) {
+        $("#c_loc_place_lbl").textContent = mode === "exact" ? "اسم مکان یا آدرس پیشنهادی" : "محله یا محدودهٔ دلخواه (اختیاری)";
+      }
+      if ($("#c_loc_place")) {
+        $("#c_loc_place").placeholder = mode === "exact"
+          ? "مثلاً: کافه بهار، پارک کرالینگسه بوس، یا آدرس دقیق…"
+          : "مثلاً: اطراف ایستگاه مرکزی، نزدیک پارک، مرکز شهر…";
+      }
+    };
+    if ($("#loc_flex")) $("#loc_flex").onclick = () => setLocMode("flexible");
+    if ($("#loc_area")) $("#loc_area").onclick = () => setLocMode("area");
+    if ($("#loc_exact")) $("#loc_exact").onclick = () => setLocMode("exact");
+
     let wo = false;
     $("#c_wo").onclick = e => { wo = !wo; e.currentTarget.classList.toggle("on", wo); };
 
@@ -1233,17 +1314,36 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       }
       try {
         const expDate = $("#c_expires")?.value || null;
+        let locPayload = null;
+        if (locMode !== "flexible") {
+          const cityKey = $("#c_loc_city")?.value || "";
+          const cityObj = cityKey ? cityByKey(cityKey) : null;
+          const placeVal = ($("#c_loc_place")?.value || "").trim();
+          const radVal = locMode === "area" ? Number($("#c_loc_rad")?.value || 10) : undefined;
+          if (cityKey || placeVal) {
+            locPayload = {
+              mode: locMode,
+              city: cityKey,
+              city_label: cityObj ? cityObj.fa : "",
+              radius_km: radVal,
+              place: placeVal,
+            };
+          }
+        }
         const r = await rpc("dh_create", {p_title:title, p_note:note, p_organizer:orgName, p_options:good, p_women_only:wo});
-        if (expDate) {
+        if (expDate || locPayload) {
           try {
+            const editBody: any = { code: r.code, admin_token: r.admin_token, action: "edit" };
+            if (expDate) editBody.expires_at = expDate;
+            if (locPayload) editBody.location = locPayload;
             await fetch("/api/d/manage", {
               method: "POST",
               headers: { "content-type": "application/json" },
-              body: JSON.stringify({ code: r.code, admin_token: r.admin_token, action: "edit", expires_at: expDate })
+              body: JSON.stringify(editBody)
             });
           } catch(e){}
         }
-        store.set("dh_"+r.code, {title, organizer_name: orgName, admin:r.admin_token});
+        store.set("dh_"+r.code, {title, organizer_name: orgName, admin:r.admin_token, location: locPayload});
         profilesLoaded = false;
         go(`/d/${r.code}?admin=${r.admin_token}&new=1`);
       } catch(e){
@@ -1281,7 +1381,8 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   }
 
   function shareText(){
-    return `سلام 🌿 برای «${M.title}» (کد دورهمی: ${M.code}) این لینک را باز کنید و بگویید چه ساعت‌هایی و تا چه محدوده‌ای روی نقشه می‌توانید بیایید:\n${linkFor(M.code)}`;
+    const locTxt = fmtLocation(M.final?.location);
+    return `سلام 🌿 برای «${M.title}» (کد دورهمی: ${M.code})${locTxt ? `\n${locTxt}` : ""}\nاین لینک را باز کنید و بگویید چه ساعت‌هایی و تا چه محدوده‌ای روی نقشه می‌توانید بیایید:\n${linkFor(M.code)}`;
   }
   function shareButtons(){
     return `
@@ -1309,10 +1410,12 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const isArchived = Boolean(M.is_archived || M.final?.archived);
     const expDate = M.expires_at || M.final?.expires_at;
     const isExpired = Boolean(M.is_expired || isDateExpired(expDate));
+    const locLine = fmtLocation(M.final?.location);
     app.innerHTML = topbar() + `
       <header class="top"><span class="logo">${detectActivityIcon(M.title)}</span><div><b>${esc(M.title)}</b><small>ساخته شد · کد: <span class="ltr">#${esc(M.code)}</span></small></div></header>
       ${isArchived ? `<div class="okbox" style="margin:8px 0;background:#fff8e6;border-color:#f6d899;color:#8a5a00">📦 <b>این دورهمی آرشیو شده است</b> (فقط برای افراد دارای لینک قابل مشاهده است).</div>` : ""}
       ${isExpired ? `<div class="okbox" style="margin:8px 0;background:#fff0f0;border-color:#ffd0d0;color:#c92a2a">⏰ <b>مهلت یا تاریخ انقضای این دورهمی به پایان رسیده است.</b></div>` : (expDate ? `<div class="tiny" style="color:var(--muted);margin-bottom:6px">⏰ مهلت اعلام حضور تا: <b>${fmtDate(expDate)}</b></div>` : "")}
+      ${locLine ? `<div class="okbox" style="margin:8px 0;background:#eefbf6;border-color:#b7ebd6;color:#0e5f4d">${esc(locLine)}</div>` : ""}
       <div class="card"><div class="row" style="gap:10px;margin-bottom:6px"><span class="hero-e" style="font-size:34px">🎉</span><h1 style="margin:0">آماده است!</h1></div>
         <p>کد یا لینک زیر را برای دوستانت بفرست تا ساعت‌ها و محدودهٔ مکانشان را روی نقشه بزنند:</p>${shareButtons()}</div>
       <div class="card"><h2>🔑 لینک مخصوص خودت (برگزارکننده)</h2>
@@ -1820,10 +1923,12 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const isArchived = Boolean(M.is_archived || M.final?.archived);
     const expDate = M.expires_at || M.final?.expires_at;
     const isExpired = Boolean(M.is_expired || isDateExpired(expDate));
+    const locLine = fmtLocation(M.final?.location);
     app.innerHTML = topbar() + `
       <header class="top"><span class="logo">${detectActivityIcon(M.title)}</span><div><b>${esc(M.title)}</b><small>${fa(A.n)} نفر فرم را پر کرده‌اند${M.organizer_name?" · برگزارکننده: "+esc(M.organizer_name):""}</small></div></header>
       ${isArchived ? `<div class="okbox" style="margin:8px 0;background:#fff8e6;border-color:#f6d899;color:#8a5a00">📦 <b>این دورهمی آرشیو شده است</b> (از لیست عمومی پنهان است اما با لینک در دسترس است).</div>` : ""}
       ${isExpired ? `<div class="okbox" style="margin:8px 0;background:#fff0f0;border-color:#ffd0d0;color:#c92a2a">⏰ <b>مهلت اعلام حضور یا تاریخ انقضای این دورهمی به پایان رسیده است.</b></div>` : (expDate ? `<div class="tiny" style="color:var(--muted);margin-bottom:6px">⏰ مهلت اعلام حضور تا: <b>${fmtDate(expDate)}</b></div>` : "")}
+      ${locLine ? `<div class="okbox" style="margin:8px 0;background:#eefbf6;border-color:#b7ebd6;color:#0e5f4d">${esc(locLine)}</div>` : ""}
       ${detectTargetType(M.title, M.note) === "pair" ? `<div class="pill sm" style="background:#fff0f6;color:#d63384;display:inline-block;margin-bottom:8px">👯‍♀️ قرار همراهی دو‌نفره (هم‌پا)</div>` : ""}
       ${M.note ? `<div class="okbox" style="margin:8px 0;background:#f6f4fe;border-color:#d7cbfa">💬 <b>پیام ${esc(M.organizer_name || "برگزارکننده")}:</b> ${esc(M.note.replace(/^\[همراه دو‌نفره\]\s*/, ""))}</div>` : ""}
       ${isFinalized(M.final) ? finalCard(M.final) : ""}
@@ -2118,13 +2223,15 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const isArchived = Boolean(M.is_archived || M.final?.archived);
     const expDate = M.expires_at || M.final?.expires_at;
     const expVal = expDate ? String(expDate).slice(0, 10) : "";
+    const loc = f.location || { mode: "flexible", city: "", radius_km: 10, place: "" };
+    const locModeInit = loc.mode || "flexible";
 
     return `
       <div class="card" id="a_manage_card">
         <h2 style="margin:0 0 6px">⚙️ مدیریت ایونت (ویرایش، آرشیو و حذف)</h2>
         <p class="tiny muted" style="margin-bottom:10px">فقط تو به عنوان برگزارکننده این بخش را می‌بینی:</p>
         <div class="row" style="gap:8px;margin-bottom:10px;flex-wrap:wrap;justify-content:flex-start">
-          <button type="button" class="btn ghost sm" id="a_btn_edit">✏️ ویرایش عنوان و مهلت انقضا</button>
+          <button type="button" class="btn ghost sm" id="a_btn_edit">✏️ ویرایش مشخصات و مکان</button>
           <button type="button" class="btn line sm" id="a_btn_archive">
             ${isArchived ? "📤 بازگردانی از آرشیو" : "📦 آرشیو کردن دورهمی"}
           </button>
@@ -2136,6 +2243,33 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           <input type="text" id="ae_title" maxlength="80" value="${esc(M.title || "")}">
           <label class="f">توضیح کوتاه</label>
           <input type="text" id="ae_note" maxlength="300" value="${esc(M.note || "")}">
+
+          <label class="f">📍 مکان یا محدودهٔ پیشنهادی</label>
+          <select id="ae_loc_mode" style="margin-bottom:8px">
+            <option value="flexible" ${locModeInit==="flexible"?"selected":""}>🗺️ پیشنهاد جمع (پیدا کردن منصفانه‌ترین مکان وسط)</option>
+            <option value="area" ${locModeInit==="area"?"selected":""}>📍 محدوده / شهر پیشنهادی</option>
+            <option value="exact" ${locModeInit==="exact"?"selected":""}>🏠 مکان مشخص</option>
+          </select>
+          <div id="ae_loc_fields" style="display:${locModeInit==="flexible"?"none":"block"};margin-bottom:8px;padding:10px;background:#fff;border:1px solid #e7e2f5;border-radius:12px">
+            <div class="row" style="gap:8px;margin-bottom:8px;flex-wrap:wrap">
+              <div style="flex:1;min-width:120px">
+                <label class="f" style="margin-top:0;font-size:12.5px">شهر</label>
+                <select id="ae_loc_city">
+                  <option value="">انتخاب شهر…</option>
+                  ${CITIES.map(c => `<option value="${c.key}" ${loc.city===c.key?"selected":""}>${esc(c.fa)}</option>`).join("")}
+                </select>
+              </div>
+              <div id="ae_loc_rad_wrap" style="flex:1;min-width:120px;display:${locModeInit==="area"?"block":"none"}">
+                <label class="f" style="margin-top:0;font-size:12.5px">شعاع محدوده</label>
+                <select id="ae_loc_rad">
+                  ${[5,10,20,40].map(r => `<option value="${r}" ${(loc.radius_km||10)===r?"selected":""}>تا ${fa(r)} کیلومتر</option>`).join("")}
+                </select>
+              </div>
+            </div>
+            <label class="f" style="margin-top:0;font-size:12.5px">اسم مکان یا محله (اختیاری)</label>
+            <input type="text" id="ae_loc_place" maxlength="140" value="${esc(loc.place || "")}" placeholder="مثلاً: اطراف ایستگاه مرکزی یا اسم کافه…">
+          </div>
+
           <label class="f">⏰ تاریخ انقضا / مهلت (اختیاری)</label>
           <input type="date" id="ae_expires" value="${esc(expVal)}">
           <span class="tiny" id="ae_expires_lbl" style="color:var(--p);font-weight:600;display:block;margin-top:4px">${expVal ? `📅 ${fmtDate(expVal)}` : ""}</span>
@@ -2155,8 +2289,8 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           : `<input type="date" id="a_date" value="${esc(defaultDate)}">`}
         <label class="f">ساعت</label><input type="time" id="a_time" value="${esc(f.t || (M.options[Math.max(sel,0)]||{}).t || "16:00")}">
         <label class="f">شهر</label>
-        <select id="a_city">${CITIES.filter(c=>c.meet).map(c=>`<option value="${c.key}" ${(pick.city||f.city||(bestHub&&bestHub.h.key))===c.key?"selected":""}>${esc(c.fa)}</option>`).join("")}</select>
-        <label class="f">اسم جا</label><input type="text" id="a_venue" maxlength="100" value="${esc(pick.venue||f.venue||"")}" placeholder="مثلاً: کافه مرکزی یا پارک">
+        <select id="a_city">${CITIES.filter(c=>c.meet).map(c=>`<option value="${c.key}" ${(pick.city||f.city||loc.city||(bestHub&&bestHub.h.key))===c.key?"selected":""}>${esc(c.fa)}</option>`).join("")}</select>
+        <label class="f">اسم جا</label><input type="text" id="a_venue" maxlength="100" value="${esc(pick.venue||f.venue||(loc.mode==="exact"?loc.place:"")||"")}" placeholder="مثلاً: کافه مرکزی یا پارک">
         <label class="f">آدرس (اختیاری)</label><input type="text" id="a_addr" maxlength="150" value="${esc(pick.address||f.address||"")}">
         <label class="f">یادداشت برای همه (اختیاری)</label><input type="text" id="a_note" maxlength="200" value="${esc(f.note||"")}" placeholder="مثلاً: جلوی در ایستگاه همدیگر را ببینیم">
         <button class="btn block" id="a_go" style="margin-top:12px">✅ قطعی کن</button>
@@ -2178,6 +2312,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       };
       if (M.final?.archived || M.is_archived) fin.archived = true;
       if (M.final?.expires_at || M.expires_at) fin.expires_at = M.final?.expires_at || M.expires_at;
+      if (M.final?.location) fin.location = M.final.location;
       try { await rpc("dh_finalize", {p_code:CODE, p_admin:ADMIN, p_final:fin}); toast("قطعی شد ✓");
         const city = (cityByKey(fin.city)||{}).fa || "";
         const txt = `✅ «${M.title}» قطعی شد:\n📅 ${fmtDate(fin.d)} ساعت ${fin.t}\n📍 ${fin.venue}${city?" — "+city:""}\nجزئیات و تقویم: ${linkFor(CODE)}`;
@@ -2189,6 +2324,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       const keepMeta: any = {};
       if (M.final?.archived || M.is_archived) keepMeta.archived = true;
       if (M.final?.expires_at || M.expires_at) keepMeta.expires_at = M.final?.expires_at || M.expires_at;
+      if (M.final?.location) keepMeta.location = M.final.location;
       const nextFinal = Object.keys(keepMeta).length ? keepMeta : null;
       try { await rpc("dh_finalize", {p_code:CODE, p_admin:ADMIN, p_final:nextFinal}); M.final = nextFinal; profilesLoaded = false; resultPage(); } catch(e){ toast(errMsg(e)); }
     };
@@ -2200,6 +2336,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       editBtn.onclick = () => {
         editBox.style.display = editBox.style.display === "none" ? "block" : "none";
       };
+      if ($("#ae_loc_mode")) {
+        $("#ae_loc_mode").onchange = (e) => {
+          const v = e.target.value;
+          if ($("#ae_loc_fields")) $("#ae_loc_fields").style.display = v === "flexible" ? "none" : "block";
+          if ($("#ae_loc_rad_wrap")) $("#ae_loc_rad_wrap").style.display = v === "area" ? "block" : "none";
+        };
+      }
       if ($("#ae_expires")) {
         $("#ae_expires").oninput = (e) => {
           const v = e.target.value;
@@ -2219,20 +2362,38 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         if (!title) return toast("عنوان نمی‌تواند خالی باشد");
         const note = ($("#ae_note")?.value || "").trim();
         const expires_at = $("#ae_expires")?.value || null;
+        const aeMode = $("#ae_loc_mode")?.value || "flexible";
+        let locPayload = null;
+        if (aeMode !== "flexible") {
+          const cityKey = $("#ae_loc_city")?.value || "";
+          const cityObj = cityKey ? cityByKey(cityKey) : null;
+          const placeVal = ($("#ae_loc_place")?.value || "").trim();
+          const radVal = aeMode === "area" ? Number($("#ae_loc_rad")?.value || 10) : undefined;
+          if (cityKey || placeVal) {
+            locPayload = {
+              mode: aeMode,
+              city: cityKey,
+              city_label: cityObj ? cityObj.fa : "",
+              radius_km: radVal,
+              place: placeVal,
+            };
+          }
+        }
         const b = $("#ae_save"); b.disabled = true; b.innerHTML = `<span class="spin"></span>`;
         try {
           const res = await fetch("/api/d/manage", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ code: CODE, admin_token: ADMIN, action: "edit", title, note, expires_at, women_only: woVal })
+            body: JSON.stringify({ code: CODE, admin_token: ADMIN, action: "edit", title, note, expires_at, women_only: woVal, location: locPayload })
           });
           const j = await res.json();
           if (!res.ok || j.error) throw new Error(j.error || "ذخیره نشد");
           M.title = title; M.note = note; M.women_only = woVal; M.expires_at = j.expires_at || expires_at;
           if (!M.final) M.final = {};
           M.final.expires_at = j.expires_at || expires_at;
+          M.final.location = j.location ?? locPayload;
           const s = store.get("dh_"+CODE) || {};
-          store.set("dh_"+CODE, {...s, title});
+          store.set("dh_"+CODE, {...s, title, location: j.location ?? locPayload});
           profilesLoaded = false;
           toast("تغییرات ذخیره شد ✓");
           resultPage();

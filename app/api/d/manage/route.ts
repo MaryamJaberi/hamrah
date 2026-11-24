@@ -68,18 +68,42 @@ export async function POST(req: Request) {
       const women_only = typeof body.women_only === 'boolean' ? body.women_only : m.women_only;
       const options = Array.isArray(body.options) ? body.options.slice(0, 10) : m.options;
 
-      let expires_at: string | null = null;
-      if (typeof body.expires_at === 'string' && body.expires_at.trim()) {
-        const raw = body.expires_at.trim();
-        const parsed = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T23:59:59.000Z`) : new Date(raw);
-        if (Number.isNaN(parsed.getTime())) {
-          return NextResponse.json({ error: 'فرمت تاریخ انقضا معتبر نیست' }, { status: 400 });
+      const currentFinal = (m.final && typeof m.final === 'object' ? m.final : {}) as Record<string, any>;
+
+      let expires_at: string | null = currentFinal.expires_at ?? m.expires_at ?? null;
+      if (body.expires_at !== undefined) {
+        if (typeof body.expires_at === 'string' && body.expires_at.trim()) {
+          const raw = body.expires_at.trim();
+          const parsed = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T23:59:59.000Z`) : new Date(raw);
+          if (Number.isNaN(parsed.getTime())) {
+            return NextResponse.json({ error: 'فرمت تاریخ انقضا معتبر نیست' }, { status: 400 });
+          }
+          expires_at = parsed.toISOString();
+        } else {
+          expires_at = null;
         }
-        expires_at = parsed.toISOString();
       }
 
-      const currentFinal = (m.final && typeof m.final === 'object' ? m.final : {}) as Record<string, any>;
-      const newFinal = { ...currentFinal, expires_at };
+      let location: Record<string, any> | null = currentFinal.location ?? null;
+      if (body.location !== undefined) {
+        if (body.location && typeof body.location === 'object' && body.location.mode && body.location.mode !== 'flexible') {
+          const mode = body.location.mode === 'exact' ? 'exact' : 'area';
+          location = {
+            mode,
+            city: typeof body.location.city === 'string' ? body.location.city.trim().slice(0, 60) : '',
+            city_label: typeof body.location.city_label === 'string' ? body.location.city_label.trim().slice(0, 80) : '',
+            radius_km: typeof body.location.radius_km === 'number' && Number.isFinite(body.location.radius_km)
+              ? Math.max(1, Math.min(100, Math.round(body.location.radius_km)))
+              : undefined,
+            place: typeof body.location.place === 'string' ? body.location.place.trim().slice(0, 140) : '',
+          };
+        } else {
+          location = null;
+        }
+      }
+
+      const newFinal: Record<string, any> = { ...currentFinal, expires_at, location };
+      if (!location) delete newFinal.location;
       const updates: Record<string, any> = {
         title,
         note,
@@ -104,6 +128,7 @@ export async function POST(req: Request) {
         women_only,
         options,
         expires_at,
+        location,
         is_archived: Boolean(m.is_archived || currentFinal.archived),
       });
     }
