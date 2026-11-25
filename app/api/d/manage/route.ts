@@ -108,9 +108,13 @@ export async function POST(req: Request) {
           const vis = ['public', 'nearby', 'private'].includes(body.audience.visibility) ? body.audience.visibility : 'public';
           const smoke = ['any', 'no_smoke', 'ok'].includes(body.audience.smoke) ? body.audience.smoke : 'any';
           const alcohol = ['any', 'no_alcohol', 'ok'].includes(body.audience.alcohol) ? body.audience.alcohol : 'any';
-          audience = (vis === 'public' && smoke === 'any' && alcohol === 'any')
+          const allowedTags = new Set(['veg', 'nl_friendly', 'adhd_friendly', 'quiet', 'no_photo']);
+          const tags = Array.isArray(body.audience.tags)
+            ? Array.from(new Set(body.audience.tags.filter((t: unknown) => typeof t === 'string' && allowedTags.has(t))))
+            : [];
+          audience = (vis === 'public' && smoke === 'any' && alcohol === 'any' && !tags.length)
             ? null
-            : { visibility: vis, smoke, alcohol };
+            : { visibility: vis, smoke, alcohol, ...(tags.length ? { tags } : {}) };
         } else {
           audience = null;
         }

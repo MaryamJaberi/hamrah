@@ -86,6 +86,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const hoursNote = r.freq === "biweekly" ? "≈ ۲۶ ساعت در ۶ ماه" : "≈ ۵۲ ساعت در ۶ ماه (آشنا ← دوست واقعی!)";
     return `🔄 قرار ثابت (${freqTxt}${when ? " · " + when : ""}) — ${hoursNote}`;
   };
+  const AUD_TAG_FA = {
+    veg: "🥗 گیاهی / وگان",
+    nl_friendly: "🌿 هم‌فاز تجربه‌های مجاز هلند",
+    adhd_friendly: "🧠 دوستانه برای ADHD / بادی‌دبلینگ",
+    quiet: "🤫 فضای آرام",
+    no_photo: "📸 بدون عکس و استوری",
+  };
   const fmtAudience = (aud, womenOnly = false) => {
     const badges: string[] = [];
     if (aud?.visibility === "private") badges.push("🔒 فقط با لینک خصوصی");
@@ -94,6 +101,9 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     else if (aud?.smoke === "ok") badges.push("🚬 با سیگار اوکیم");
     if (aud?.alcohol === "no_alcohol") badges.push("🥤 بدون الکل");
     else if (aud?.alcohol === "ok") badges.push("🍷 با الکل اوکیم");
+    if (Array.isArray(aud?.tags)) {
+      aud.tags.forEach(t => { if (AUD_TAG_FA[t]) badges.push(AUD_TAG_FA[t]); });
+    }
     if (womenOnly) badges.push("👩 فقط خانم‌ها");
     return badges;
   };
@@ -232,15 +242,19 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   const fmtTimeBucket = (k) => (TIME_BUCKETS.find(x => x[0] === k) || [, fmtWin(k)])[1];
 
   const EVENT_IDEAS = [
+    { k: "walk", icon: "🌳", label: "پیاده‌روی ثابت", title: "پیاده‌روی ثابت و گپ 🌳", note: "هر هفته با هم پیاده‌روی کنیم و پایهٔ هم باشیم 🌿", target: "pair" },
+    { k: "bodydouble", icon: "🧠", label: "بادی‌دبلینگ (ADHD)", title: "بادی‌دبلینگ و هم‌پای تمرکز 🧠", note: "کنار هم کار یا درس انجام بدیم تا تمرکزمون بیشتر بشه (عالی برای ADHD)", target: "pair" },
     { k: "cafe", icon: "☕", label: "کافه", title: "کافه و گپ دوستانه ☕", note: "بریم یه کافه بشینیم و گپ بزنیم ☕", target: "group" },
+    { k: "vegan", icon: "🥗", label: "رستوران گیاهی", title: "رستوران یا کافهٔ گیاهی 🥗", note: "باهم یه جای گیاهی/وگان خوب بریم 🥗", target: "group" },
     { k: "run", icon: "🏃‍♀️", label: "دویدن", title: "همراه برای دویدن صبحگاهی 🏃‍♀️", note: "دنبال یک همراه می‌گردم صبح‌ها با هم بریم بدویم 🏃‍♀️", target: "pair" },
-    { k: "walk", icon: "🌳", label: "پیاده‌روی", title: "پیاده‌روی در طبیعت و پارک 🌳", note: "پیاده‌روی در پارک و هواخوری 🌿", target: "group" },
     { k: "boardgame", icon: "🎲", label: "بردگیم", title: "شب بازی و بردگیم 🎲", note: "دورهمی برای بازی‌های فکری و مافیا 🎲", target: "group" },
     { k: "food", icon: "🍽️", label: "شام/غذا", title: "دورهمی شام یا ناهار 🍽️", note: "بریم یک رستوران خوب با هم 🍽️", target: "group" },
   ];
 
   function detectActivityIcon(t) {
     const s = String(t || "").toLowerCase();
+    if (s.includes("بادی") || s.includes("تمرکز") || s.includes("adhd") || s.includes("body")) return "🧠";
+    if (s.includes("گیاهی") || s.includes("وگان") || s.includes("vegan")) return "🥗";
     if (s.includes("کافه") || s.includes("قهوه") || s.includes("cafe")) return "☕";
     if (s.includes("دویدن") || s.includes("ورزش") || s.includes("بدمینتون") || s.includes("run") || s.includes("sport")) return "🏃‍♀️";
     if (s.includes("پیاده") || s.includes("پارک") || s.includes("طبیعت") || s.includes("walk")) return "🌳";
@@ -1081,7 +1095,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           </div>
 
           <div style="margin-bottom:14px">
-            <label class="f" style="margin-top:0">👁️ چه کسانی این ایونت را ببینند؟</label>
+            <label class="f" style="margin-top:0">🛡️ فضای امن و هم‌فازی (کی‌ها راحت‌ترن؟)</label>
             <div class="seg sm" style="margin:0">
               <button type="button" id="vis_public" class="on" style="white-space:nowrap">🌍 عمومی</button>
               <button type="button" id="vis_nearby" style="white-space:nowrap">📍 اطراف من</button>
@@ -1091,11 +1105,16 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               همه در لیست ایونت‌ها می‌بینند و می‌توانند اعلام حضور کنند.
             </div>
             <div class="chips" id="c_aud_chips" style="gap:6px">
+              <span class="chip sm" id="c_wo_chip">👩 فقط خانم‌ها</span>
               <span class="chip sm" data-smoke="no_smoke">🚭 بدون سیگار</span>
               <span class="chip sm" data-smoke="ok">🚬 سیگار اوکیم</span>
               <span class="chip sm" data-alc="no_alcohol">🥤 بدون الکل</span>
               <span class="chip sm" data-alc="ok">🍷 الکل اوکیم</span>
-              <span class="chip sm" id="c_wo_chip">👩 فقط خانم‌ها</span>
+              <span class="chip sm" data-audtag="veg">🥗 گیاهی / وگان</span>
+              <span class="chip sm" data-audtag="nl_friendly">🌿 هم‌فاز تجربه‌های مجاز هلند</span>
+              <span class="chip sm" data-audtag="adhd_friendly">🧠 بادی‌دبلینگ / ADHD</span>
+              <span class="chip sm" data-audtag="quiet">🤫 فضای آرام</span>
+              <span class="chip sm" data-audtag="no_photo">📸 بدون عکس/استوری</span>
             </div>
           </div>
 
@@ -1144,6 +1163,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
                 <div class="chips" id="meetups_filter_bar" style="gap:5px;flex:1">
                   <span class="chip sm on" data-mfilter="all">همه (${fa(mine.length)})</span>
                   <span class="chip sm" data-mfilter="recurring">🔄 قرارهای ثابت</span>
+                  <span class="chip sm" data-mfilter="bodydouble">🧠 بادی‌دبلینگ</span>
                   <span class="chip sm" data-mfilter="cafe">☕ کافه</span>
                   <span class="chip sm" data-mfilter="sport">🏃‍♀️ ورزش</span>
                   <span class="chip sm" data-mfilter="walk">🌳 پیاده‌روی</span>
@@ -1167,7 +1187,8 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               const rhyObj = m.rhythm || m.final?.rhythm;
               const rhySummary = fmtRhythm(rhyObj, true);
               let cat = "other";
-              if (["☕","🍽️"].includes(icon)) cat = "cafe";
+              if (["🧠","📚"].includes(icon)) cat = "bodydouble";
+              else if (["☕","🍽️","🥗"].includes(icon)) cat = "cafe";
               else if (["🏃‍♀️","🏸","🚴"].includes(icon)) cat = "sport";
               else if (["🎲"].includes(icon)) cat = "game";
               else if (["🌳","🧺"].includes(icon)) cat = "walk";
@@ -1361,6 +1382,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     let visMode = "public";
     let smokePref = "any";
     let alcPref = "any";
+    const audTags = new Set();
     const setVisMode = (mode) => {
       visMode = mode;
       $("#vis_public")?.classList.toggle("on", mode === "public");
@@ -1390,6 +1412,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         const v = el.dataset.alc;
         alcPref = alcPref === v ? "any" : v;
         $("#c_aud_chips").querySelectorAll("[data-alc]").forEach(x => x.classList.toggle("on", x.dataset.alc === alcPref));
+      };
+    });
+    $("#c_aud_chips")?.querySelectorAll("[data-audtag]").forEach(el => {
+      el.onclick = () => {
+        const t = el.dataset.audtag;
+        if (audTags.has(t)) audTags.delete(t); else audTags.add(t);
+        el.classList.toggle("on", audTags.has(t));
       };
     });
 
@@ -1500,8 +1529,9 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             };
           }
         }
-        const audPayload = (visMode !== "public" || smokePref !== "any" || alcPref !== "any")
-          ? { visibility: visMode, smoke: smokePref, alcohol: alcPref }
+        const tagsArr = Array.from(audTags);
+        const audPayload = (visMode !== "public" || smokePref !== "any" || alcPref !== "any" || tagsArr.length)
+          ? { visibility: visMode, smoke: smokePref, alcohol: alcPref, ...(tagsArr.length ? { tags: tagsArr } : {}) }
           : null;
         const rhyPayload = rhyFreq !== "once"
           ? { freq: rhyFreq, day: $("#c_rhy_day")?.value || "any", slot: $("#c_rhy_slot")?.value || "any" }
