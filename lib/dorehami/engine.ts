@@ -59,7 +59,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   };
   const fmtLocation = (loc, compact = false) => {
     if (!loc || loc.mode === "flexible") return "";
-    const cityFa = loc.city_label || (loc.city ? (cityByKey(loc.city)?.fa || loc.city) : "");
+    const cityFa = (loc.city ? cityByKey(loc.city)?.fa : "") || loc.city_label || loc.city || "";
     if (loc.mode === "exact") {
       const parts = [loc.place, cityFa].filter(Boolean);
       if (!parts.length) return "";
@@ -93,10 +93,26 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     quiet: "🤫 فضای آرام",
     no_photo: "📸 بدون عکس و استوری",
   };
+  const GENDER_PREF_FA = {
+    same_gender: "🤝 ترجیحاً هم‌جنس",
+    women_only: "👩 فقط خانم‌ها",
+    men_only: "👨 فقط آقایان",
+    lgbtq_safe: "🌈 فضای امن و بدون قضاوت",
+  };
+  const LANG_PREF_FA = {
+    nl_native: "🇳🇱 تمرین هلندی (با نیتیو / مسلط)",
+    nl_practice: "🇳🇱 تمرین هلندی باهم",
+    en_native: "🇬🇧 تمرین انگلیسی (با نیتیو / مسلط)",
+    en_practice: "🇬🇧 تمرین انگلیسی باهم",
+    fa: "🇮🇷 هم‌زبان فارسی",
+  };
   const fmtAudience = (aud, womenOnly = false) => {
     const badges: string[] = [];
     if (aud?.visibility === "private") badges.push("🔒 فقط با لینک خصوصی");
     else if (aud?.visibility === "nearby") badges.push("📍 فقط اطراف من");
+    if (aud?.lang && LANG_PREF_FA[aud.lang]) badges.push(LANG_PREF_FA[aud.lang]);
+    if (aud?.gender_pref && GENDER_PREF_FA[aud.gender_pref]) badges.push(GENDER_PREF_FA[aud.gender_pref]);
+    else if (womenOnly) badges.push("👩 فقط خانم‌ها");
     if (aud?.smoke === "no_smoke") badges.push("🚭 بدون سیگار");
     else if (aud?.smoke === "ok") badges.push("🚬 با سیگار اوکیم");
     if (aud?.alcohol === "no_alcohol") badges.push("🥤 بدون الکل");
@@ -104,7 +120,6 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     if (Array.isArray(aud?.tags)) {
       aud.tags.forEach(t => { if (AUD_TAG_FA[t]) badges.push(AUD_TAG_FA[t]); });
     }
-    if (womenOnly) badges.push("👩 فقط خانم‌ها");
     return badges;
   };
   const colorOf = s => COLORS[[...String(s)].reduce((a,c)=>a+c.charCodeAt(0),0) % COLORS.length];
@@ -244,6 +259,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   const EVENT_IDEAS = [
     { k: "walk", icon: "🌳", label: "پیاده‌روی ثابت", title: "پیاده‌روی ثابت و گپ 🌳", note: "هر هفته با هم پیاده‌روی کنیم و پایهٔ هم باشیم 🌿", target: "pair" },
     { k: "bodydouble", icon: "🧠", label: "بادی‌دبلینگ (ADHD)", title: "بادی‌دبلینگ و هم‌پای تمرکز 🧠", note: "کنار هم کار یا درس انجام بدیم تا تمرکزمون بیشتر بشه (عالی برای ADHD)", target: "pair" },
+    { k: "lang", icon: "🗣️", label: "تمرین زبان (هلندی)", title: "قرار تمرین زبان هلندی 🗣️", note: "باهم هلندی حرف بزنیم (نیتیو یا مسلط / تمرین مکالمه) 🇳🇱", target: "pair" },
     { k: "cafe", icon: "☕", label: "کافه", title: "کافه و گپ دوستانه ☕", note: "بریم یه کافه بشینیم و گپ بزنیم ☕", target: "group" },
     { k: "vegan", icon: "🥗", label: "رستوران گیاهی", title: "رستوران یا کافهٔ گیاهی 🥗", note: "باهم یه جای گیاهی/وگان خوب بریم 🥗", target: "group" },
     { k: "run", icon: "🏃‍♀️", label: "دویدن", title: "همراه برای دویدن صبحگاهی 🏃‍♀️", note: "دنبال یک همراه می‌گردم صبح‌ها با هم بریم بدویم 🏃‍♀️", target: "pair" },
@@ -253,6 +269,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
 
   function detectActivityIcon(t) {
     const s = String(t || "").toLowerCase();
+    if (s.includes("زبان") || s.includes("هلندی") || s.includes("انگلیسی") || s.includes("dutch") || s.includes("language")) return "🗣️";
     if (s.includes("بادی") || s.includes("تمرکز") || s.includes("adhd") || s.includes("body")) return "🧠";
     if (s.includes("گیاهی") || s.includes("وگان") || s.includes("vegan")) return "🥗";
     if (s.includes("کافه") || s.includes("قهوه") || s.includes("cafe")) return "☕";
@@ -761,7 +778,8 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         }
       });
 
-      wrap.querySelector("#pm_load_btn").onclick = async () => {
+      const pmLoadBtn = wrap.querySelector("#pm_load_btn");
+      if (pmLoadBtn) pmLoadBtn.onclick = async () => {
         const em = wrap.querySelector("#pm_email").value.trim().toLowerCase();
         const nm = wrap.querySelector("#pm_name").value.trim();
         if (!em && !nm) return toast("نام یا جیمیلت را وارد کن");
@@ -996,16 +1014,16 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           <div style="margin-bottom:14px">
             <label class="f" style="margin-top:0">🔄 تکرار قرار (راز دوستی واقعی)</label>
             <div class="seg sm" style="margin:0">
-              <button type="button" id="rhy_weekly" class="on" style="white-space:nowrap">🔄 هر هفته (پیشنهادی)</button>
-              <button type="button" id="rhy_biweekly" style="white-space:nowrap">🔁 هر دو هفته</button>
+              <button type="button" id="rhy_weekly" class="on" style="white-space:nowrap">🔄 هر هفته</button>
+              <button type="button" id="rhy_biweekly" style="white-space:nowrap">🔁 دوهفته‌ای</button>
               <button type="button" id="rhy_once" style="white-space:nowrap">1️⃣ یک‌باره</button>
             </div>
             <div id="c_rhy_box" style="margin-top:8px;padding:10px 12px;background:#f8f7fc;border:1px solid #e7e2f5;border-radius:12px">
               <div class="row" style="gap:8px;flex-wrap:wrap">
-                <div style="flex:1;min-width:120px">
+                <div style="flex:1;min-width:130px">
                   <label class="f" style="margin-top:0;font-size:12.5px">روز ثابت پیشنهادی</label>
-                  <select id="c_rhy_day">
-                    <option value="any">با جمع هماهنگ می‌کنیم</option>
+                  <select id="c_rhy_day" style="height:42px">
+                    <option value="any">با جمع هماهنگ</option>
                     <option value="sat">شنبه‌ها</option>
                     <option value="sun">یکشنبه‌ها</option>
                     <option value="mon">دوشنبه‌ها</option>
@@ -1015,10 +1033,10 @@ export function mount(root: HTMLElement, opts: DhOptions) {
                     <option value="fri">جمعه‌ها</option>
                   </select>
                 </div>
-                <div style="flex:1;min-width:120px">
+                <div style="flex:1;min-width:130px">
                   <label class="f" style="margin-top:0;font-size:12.5px">بازهٔ زمانی</label>
-                  <select id="c_rhy_slot">
-                    <option value="any">هر ساعتی که بخوره</option>
+                  <select id="c_rhy_slot" style="height:42px">
+                    <option value="any">هر ساعتی</option>
                     <option value="morning">🌅 صبح‌ها</option>
                     <option value="afternoon">☀️ عصرها</option>
                     <option value="evening">🌙 شب‌ها</option>
@@ -1063,7 +1081,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             <label class="f" style="margin-top:0">📍 مکان یا محدودهٔ پیشنهادی</label>
             <div class="seg sm" style="margin:0">
               <button type="button" id="loc_flex" class="on" style="white-space:nowrap">🗺️ پیشنهاد جمع</button>
-              <button type="button" id="loc_area" style="white-space:nowrap">📍 محدوده / شهر</button>
+              <button type="button" id="loc_area" style="white-space:nowrap">📍 شهر/محدوده</button>
               <button type="button" id="loc_exact" style="white-space:nowrap">🏠 مکان مشخص</button>
             </div>
             <div class="tiny" style="color:var(--muted);margin-top:4px" id="c_loc_hint">
@@ -1104,8 +1122,30 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             <div class="tiny" style="color:var(--muted);margin-top:4px;margin-bottom:8px" id="c_vis_hint">
               همه در لیست ایونت‌ها می‌بینند و می‌توانند اعلام حضور کنند.
             </div>
+            <div class="row" style="gap:8px;margin-bottom:8px;flex-wrap:wrap">
+              <div style="flex:1;min-width:140px">
+                <label class="f" style="margin-top:0;font-size:12.5px">🗣️ زبان / تمرین (اختیاری)</label>
+                <select id="c_lang_pref" style="height:42px">
+                  <option value="any">فرقی نداره</option>
+                  <option value="nl_native">🇳🇱 هلندی (نیتیو/مسلط)</option>
+                  <option value="nl_practice">🇳🇱 تمرین هلندی باهم</option>
+                  <option value="en_native">🇬🇧 انگلیسی (نیتیو/مسلط)</option>
+                  <option value="en_practice">🇬🇧 تمرین انگلیسی باهم</option>
+                  <option value="fa">🇮🇷 هم‌زبان فارسی</option>
+                </select>
+              </div>
+              <div style="flex:1;min-width:140px">
+                <label class="f" style="margin-top:0;font-size:12.5px">🤝 ترجیح همراه (اختیاری)</label>
+                <select id="c_gender_pref" style="height:42px">
+                  <option value="any">همه خوش‌آمدند</option>
+                  <option value="same_gender">🤝 ترجیحاً هم‌جنس</option>
+                  <option value="women_only">👩 فقط خانم‌ها</option>
+                  <option value="men_only">👨 فقط آقایان</option>
+                  <option value="lgbtq_safe">🌈 فضای امن و بدون قضاوت</option>
+                </select>
+              </div>
+            </div>
             <div class="chips" id="c_aud_chips" style="gap:6px">
-              <span class="chip sm" id="c_wo_chip">👩 فقط خانم‌ها</span>
               <span class="chip sm" data-smoke="no_smoke">🚭 بدون سیگار</span>
               <span class="chip sm" data-smoke="ok">🚬 سیگار اوکیم</span>
               <span class="chip sm" data-alc="no_alcohol">🥤 بدون الکل</span>
@@ -1145,7 +1185,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           <div style="background:#f8f6ff;border:1.5px solid #e1daf7;border-radius:14px;padding:12px 14px;margin-bottom:14px">
             <label class="f" style="margin-top:0">🔑 ورود مستقیم با کد یا لینک دورهمی:</label>
             <div class="row" style="gap:8px;margin-top:6px;flex-wrap:nowrap">
-              <input type="text" id="join_code_inp" class="code-inp" placeholder="کد یا لینک مثلاً 096be90f" style="flex:1;min-width:0">
+              <input type="text" id="join_code_inp" class="code-inp" placeholder="کد یا لینک دورهمی را وارد کن…" style="flex:1;min-width:0">
               <button type="button" class="btn sm" id="join_code_go" style="white-space:nowrap;flex:none;min-height:44px">ورود ←</button>
             </div>
             <p class="tiny" style="margin-top:6px;margin-bottom:0">کد یا لینکی که از دوستت گرفتی را وارد کن تا ساعت‌ها و شهرهایت را بفرستی.</p>
@@ -1164,6 +1204,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
                   <span class="chip sm on" data-mfilter="all">همه (${fa(mine.length)})</span>
                   <span class="chip sm" data-mfilter="recurring">🔄 قرارهای ثابت</span>
                   <span class="chip sm" data-mfilter="bodydouble">🧠 بادی‌دبلینگ</span>
+                  <span class="chip sm" data-mfilter="lang">🗣️ تمرین زبان</span>
                   <span class="chip sm" data-mfilter="cafe">☕ کافه</span>
                   <span class="chip sm" data-mfilter="sport">🏃‍♀️ ورزش</span>
                   <span class="chip sm" data-mfilter="walk">🌳 پیاده‌روی</span>
@@ -1186,14 +1227,16 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               const locSummary = fmtLocation(locObj, true);
               const rhyObj = m.rhythm || m.final?.rhythm;
               const rhySummary = fmtRhythm(rhyObj, true);
+              const audBadges = fmtAudience(m.audience || m.final?.audience, Boolean(m.women_only));
               let cat = "other";
-              if (["🧠","📚"].includes(icon)) cat = "bodydouble";
+              if (icon === "🗣️" || m.audience?.lang || m.final?.audience?.lang) cat = "lang";
+              else if (["🧠","📚"].includes(icon)) cat = "bodydouble";
               else if (["☕","🍽️","🥗"].includes(icon)) cat = "cafe";
               else if (["🏃‍♀️","🏸","🚴"].includes(icon)) cat = "sport";
               else if (["🎲"].includes(icon)) cat = "game";
               else if (["🌳","🧺"].includes(icon)) cat = "walk";
               return `
-              <a class="meetup-item" data-mcat="${cat}" data-mrec="${rhyObj ? "1" : "0"}" data-mcity="${esc(locObj?.city || "")}" href="/d/${esc(m.code)}${m.admin && m.admin !== "account"?`?admin=${esc(m.admin)}`:""}">
+              <a class="meetup-item" data-mcat="${cat}" data-mrec="${rhySummary ? "1" : "0"}" data-mcity="${esc(locObj?.city || "")}" href="/d/${esc(m.code)}${m.admin && m.admin !== "account"?`?admin=${esc(m.admin)}`:""}">
                 <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:200px">
                   <div class="av-sm" style="background:${colorOf(m.organizer_name||'د')};width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px;flex:none">${icon}</div>
                   <div>
@@ -1203,6 +1246,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
                       ${rhySummary ? `<span class="pill sm" style="background:#f3e8ff;color:#6b21a8">${esc(rhySummary)}</span>` : ''}
                       <span class="pill sm" style="background:${isPair?"#fff0f6":"#f0f5ff"};color:${isPair?"#d63384":"#0d6efd"}">${isPair ? "👯‍♀️ دونفره" : "👥 گروهی"}</span>
                       ${locSummary ? `<span class="pill sm" style="background:#eefbf6;color:#0e5f4d">${esc(locSummary)}</span>` : ''}
+                      ${audBadges.slice(0, 3).map(b => `<span class="pill sm" style="background:#f3f0ff;color:var(--p)">${esc(b)}</span>`).join("")}
                       ${isArchived ? '<span class="pill sm" style="background:#fff3d4;color:#8a5a00">📦 آرشیو</span>' : ''}
                       ${isExpired ? '<span class="pill sm" style="background:#ffe3e3;color:#c92a2a">⏰ منقضی</span>' : ''}
                     </div>
@@ -1423,7 +1467,11 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     });
 
     let wo = false;
-    if ($("#c_wo_chip")) $("#c_wo_chip").onclick = e => { wo = !wo; e.currentTarget.classList.toggle("on", wo); };
+    if ($("#c_gender_pref")) {
+      $("#c_gender_pref").onchange = (e) => {
+        wo = e.target.value === "women_only";
+      };
+    }
 
     let currentTarget = "group";
     const updateTargetUI = (tgt) => {
@@ -1530,8 +1578,18 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           }
         }
         const tagsArr = Array.from(audTags);
-        const audPayload = (visMode !== "public" || smokePref !== "any" || alcPref !== "any" || tagsArr.length)
-          ? { visibility: visMode, smoke: smokePref, alcohol: alcPref, ...(tagsArr.length ? { tags: tagsArr } : {}) }
+        const langPref = $("#c_lang_pref")?.value || "any";
+        const genderPref = $("#c_gender_pref")?.value || "any";
+        if (genderPref === "women_only") wo = true;
+        const audPayload = (visMode !== "public" || smokePref !== "any" || alcPref !== "any" || langPref !== "any" || genderPref !== "any" || tagsArr.length)
+          ? {
+              visibility: visMode,
+              smoke: smokePref,
+              alcohol: alcPref,
+              ...(langPref !== "any" ? { lang: langPref } : {}),
+              ...(genderPref !== "any" ? { gender_pref: genderPref } : {}),
+              ...(tagsArr.length ? { tags: tagsArr } : {}),
+            }
           : null;
         const rhyPayload = rhyFreq !== "once"
           ? { freq: rhyFreq, day: $("#c_rhy_day")?.value || "any", slot: $("#c_rhy_slot")?.value || "any" }
@@ -1695,6 +1753,9 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           <h1 style="margin:0">${esc(M.title)}</h1>
         </div>
         ${detectTargetType(M.title, M.note) === "pair" ? `<div class="pill sm" style="background:#fff0f6;color:#d63384;display:inline-block;margin-bottom:8px">👯‍♀️ همراه دو‌نفره (هم‌پا)</div>` : ""}
+        ${fmtRhythm(M.final?.rhythm) ? `<div class="okbox" style="margin:6px 0;background:#f5f0ff;border-color:#d8c8fb;color:#5b21b6">${esc(fmtRhythm(M.final?.rhythm))}</div>` : ""}
+        ${fmtLocation(M.final?.location) ? `<div class="okbox" style="margin:6px 0;background:#eefbf6;border-color:#b7ebd6;color:#0e5f4d">${esc(fmtLocation(M.final?.location))}</div>` : ""}
+        ${fmtAudience(M.final?.audience, Boolean(M.women_only)).length ? `<div class="row" style="gap:6px;margin:6px 0 8px">${fmtAudience(M.final?.audience, Boolean(M.women_only)).map(b => `<span class="pill sm" style="background:#f3f0ff;color:var(--p)">${esc(b)}</span>`).join("")}</div>` : ""}
         ${M.note?`<div class="okbox" style="margin:8px 0;background:#f6f4fe;border-color:#d7cbfa">💬 <b>پیام ${esc(M.organizer_name || "برگزارکننده")}:</b> ${esc(M.note.replace(/^\[همراه دو‌نفره\]\s*/, ""))}</div>`:""}
         <p class="muted">بگو چه روزها، چه ساعت‌هایی و تا چه محدوده‌ای روی نقشه می‌توانی بیایی تا بهترین زمان و مکان مشترک برای همه پیدا شود. ${M.women_only?"<b>این دورهمی فقط برای خانم‌هاست.</b>":""}</p>
         ${quick?`<div class="okbox">✨ جواب‌های دفعهٔ قبلت را گذاشتم: مبدأ (${esc(D.origin?.fa || "ثبت‌شده")})، وسیله، غذا، ترجیح‌ها و حریم خصوصی. فقط ساعت‌ها و محدوده‌ای که این بار می‌تونی رو بزن؛ در صفحهٔ آخر هر بخش را خواستی با یک ضربه عوض کن.</div>`
@@ -2600,12 +2661,16 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             };
           }
         }
+        const curAud = M.final?.audience ? { ...M.final.audience } : null;
+        const nextAud = curAud && !woVal && curAud.gender_pref === "women_only"
+          ? { ...curAud, gender_pref: "any" }
+          : (woVal && curAud ? { ...curAud, gender_pref: "women_only" } : curAud);
         const b = $("#ae_save"); b.disabled = true; b.innerHTML = `<span class="spin"></span>`;
         try {
           const res = await fetch("/api/d/manage", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ code: CODE, admin_token: ADMIN, action: "edit", title, note, expires_at, women_only: woVal, location: locPayload })
+            body: JSON.stringify({ code: CODE, admin_token: ADMIN, action: "edit", title, note, expires_at, women_only: woVal, location: locPayload, ...(nextAud !== curAud ? { audience: nextAud } : {}) })
           });
           const j = await res.json();
           if (!res.ok || j.error) throw new Error(j.error || "ذخیره نشد");
@@ -2613,6 +2678,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           if (!M.final) M.final = {};
           M.final.expires_at = j.expires_at || expires_at;
           M.final.location = j.location ?? locPayload;
+          if (j.audience !== undefined) M.final.audience = j.audience;
           const s = store.get("dh_"+CODE) || {};
           store.set("dh_"+CODE, {...s, title, location: j.location ?? locPayload});
           profilesLoaded = false;

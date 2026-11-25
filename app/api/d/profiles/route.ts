@@ -146,7 +146,11 @@ export async function GET(req: Request) {
     const emailKey = typeof rData.email === 'string' && rData.email.includes('@') ? rData.email.trim().toLowerCase() : null;
     const prev = byName.get(key) || (emailKey ? byName.get(emailKey) : undefined);
     const m = meetupById.get(r.meetup_id);
-    const isRealMeetup = m && !/e2e|تست دورهمی/i.test(m.title ?? '');
+    const isRealMeetup =
+      m &&
+      !/e2e|تست دورهمی/i.test(m.title ?? '') &&
+      !Boolean(m.is_archived || m.final?.archived) &&
+      m.final?.audience?.visibility !== 'private';
 
     if (!prev) {
       const entry = {
