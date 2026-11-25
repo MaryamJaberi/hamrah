@@ -141,7 +141,9 @@ test('creator: location/area, expiry date, edit details, archive/unarchive, and 
   page.on('dialog', (d) => (d.message().includes('واتس') ? d.dismiss() : d.accept()));
   await page.goto('/d');
   await page.locator('#c_title').fill('ایونت تست مدیریت');
-  // Choose suggested area/city & private link + lifestyle filters
+  // Choose weekly Tuesday afternoon recurring ritual, suggested area/city & private link + lifestyle filters
+  await page.locator('#c_rhy_day').selectOption('tue');
+  await page.locator('#c_rhy_slot').selectOption('afternoon');
   await page.locator('#loc_area').click();
   await page.locator('#c_loc_city').selectOption('delft');
   await page.locator('#c_loc_place').fill('اطراف مرکز شهر');
@@ -150,6 +152,7 @@ test('creator: location/area, expiry date, edit details, archive/unarchive, and 
   await page.locator('[data-alc="no_alcohol"]').click();
   await page.locator('#c_go_open').click();
   await expect(page.getByRole('heading', { name: 'آماده است!' })).toBeVisible();
+  await expect(page.getByText(/قرار ثابت.*هر هفته.*سه‌شنبه‌ها عصر/)).toBeVisible();
   await expect(page.getByText(/محدودهٔ پیشنهادی.*دلفت.*اطراف مرکز شهر/)).toBeVisible();
   await expect(page.getByText(/فقط با لینک خصوصی/)).toBeVisible();
   await expect(page.getByText(/بدون سیگار/)).toBeVisible();

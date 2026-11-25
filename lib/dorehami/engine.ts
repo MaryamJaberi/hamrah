@@ -74,6 +74,25 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   };
   const fmtOpt = o => `${fmtDate(o.d)}${o.t ? " · ساعت " + fa(o.t) : ""}`;
   const COLORS = ["#5b2a86","#c2185b","#00796b","#ef6c00","#3949ab","#6d4c41","#2e7d32","#ad1457","#0277bd","#7b1fa2"];
+  const DAY_FA = { any:"روزش با جمع", sat:"شنبه‌ها", sun:"یکشنبه‌ها", mon:"دوشنبه‌ها", tue:"سه‌شنبه‌ها", wed:"چهارشنبه‌ها", thu:"پنجشنبه‌ها", fri:"جمعه‌ها" };
+  const SLOT_FA = { any:"", morning:"صبح", afternoon:"عصر", evening:"شب" };
+  const fmtRhythm = (r, compact = false) => {
+    if (!r || r.freq === "once") return "";
+    const freqTxt = r.freq === "biweekly" ? "هر دو هفته" : "هر هفته";
+    const dayTxt = r.day && r.day !== "any" ? (DAY_FA[r.day] || r.day) : "";
+    const slotTxt = r.slot && r.slot !== "any" ? (SLOT_FA[r.slot] || r.slot) : "";
+    const when = [dayTxt, slotTxt].filter(Boolean).join(" ");
+    if (compact) return `🔄 ${freqTxt}${when ? " · " + when : ""}`;
+    const hoursNote = r.freq === "biweekly" ? "≈ ۲۶ ساعت در ۶ ماه" : "≈ ۵۲ ساعت در ۶ ماه (آشنا ← دوست واقعی!)";
+    return `🔄 قرار ثابت (${freqTxt}${when ? " · " + when : ""}) — ${hoursNote}`;
+  };
+  const AUD_TAG_FA = {
+    veg: "🥗 گیاهی / وگان",
+    nl_friendly: "🌿 هم‌فاز تجربه‌های مجاز هلند",
+    adhd_friendly: "🧠 دوستانه برای ADHD / بادی‌دبلینگ",
+    quiet: "🤫 فضای آرام",
+    no_photo: "📸 بدون عکس و استوری",
+  };
   const fmtAudience = (aud, womenOnly = false) => {
     const badges: string[] = [];
     if (aud?.visibility === "private") badges.push("🔒 فقط با لینک خصوصی");
@@ -82,6 +101,9 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     else if (aud?.smoke === "ok") badges.push("🚬 با سیگار اوکیم");
     if (aud?.alcohol === "no_alcohol") badges.push("🥤 بدون الکل");
     else if (aud?.alcohol === "ok") badges.push("🍷 با الکل اوکیم");
+    if (Array.isArray(aud?.tags)) {
+      aud.tags.forEach(t => { if (AUD_TAG_FA[t]) badges.push(AUD_TAG_FA[t]); });
+    }
     if (womenOnly) badges.push("👩 فقط خانم‌ها");
     return badges;
   };
@@ -220,15 +242,19 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   const fmtTimeBucket = (k) => (TIME_BUCKETS.find(x => x[0] === k) || [, fmtWin(k)])[1];
 
   const EVENT_IDEAS = [
+    { k: "walk", icon: "🌳", label: "پیاده‌روی ثابت", title: "پیاده‌روی ثابت و گپ 🌳", note: "هر هفته با هم پیاده‌روی کنیم و پایهٔ هم باشیم 🌿", target: "pair" },
+    { k: "bodydouble", icon: "🧠", label: "بادی‌دبلینگ (ADHD)", title: "بادی‌دبلینگ و هم‌پای تمرکز 🧠", note: "کنار هم کار یا درس انجام بدیم تا تمرکزمون بیشتر بشه (عالی برای ADHD)", target: "pair" },
     { k: "cafe", icon: "☕", label: "کافه", title: "کافه و گپ دوستانه ☕", note: "بریم یه کافه بشینیم و گپ بزنیم ☕", target: "group" },
+    { k: "vegan", icon: "🥗", label: "رستوران گیاهی", title: "رستوران یا کافهٔ گیاهی 🥗", note: "باهم یه جای گیاهی/وگان خوب بریم 🥗", target: "group" },
     { k: "run", icon: "🏃‍♀️", label: "دویدن", title: "همراه برای دویدن صبحگاهی 🏃‍♀️", note: "دنبال یک همراه می‌گردم صبح‌ها با هم بریم بدویم 🏃‍♀️", target: "pair" },
-    { k: "walk", icon: "🌳", label: "پیاده‌روی", title: "پیاده‌روی در طبیعت و پارک 🌳", note: "پیاده‌روی در پارک و هواخوری 🌿", target: "group" },
     { k: "boardgame", icon: "🎲", label: "بردگیم", title: "شب بازی و بردگیم 🎲", note: "دورهمی برای بازی‌های فکری و مافیا 🎲", target: "group" },
     { k: "food", icon: "🍽️", label: "شام/غذا", title: "دورهمی شام یا ناهار 🍽️", note: "بریم یک رستوران خوب با هم 🍽️", target: "group" },
   ];
 
   function detectActivityIcon(t) {
     const s = String(t || "").toLowerCase();
+    if (s.includes("بادی") || s.includes("تمرکز") || s.includes("adhd") || s.includes("body")) return "🧠";
+    if (s.includes("گیاهی") || s.includes("وگان") || s.includes("vegan")) return "🥗";
     if (s.includes("کافه") || s.includes("قهوه") || s.includes("cafe")) return "☕";
     if (s.includes("دویدن") || s.includes("ورزش") || s.includes("بدمینتون") || s.includes("run") || s.includes("sport")) return "🏃‍♀️";
     if (s.includes("پیاده") || s.includes("پارک") || s.includes("طبیعت") || s.includes("walk")) return "🌳";
@@ -936,18 +962,27 @@ export function mount(root: HTMLElement, opts: DhOptions) {
 
     app.innerHTML = topbar() + `
       <div class="card">
-        <h1 id="home_hero_h1">✨ یک دورهمی بساز</h1>
-        <p class="muted" id="home_hero_sub" style="margin-bottom:14px;font-size:13px">قراری که دوست داری را ثبت کن تا دوستانت زمان و مکانشان را هماهنگ کنند:</p>
+        <h1 id="home_hero_h1">✨ یک دورهمی بساز یا قرار ثابت بگذار</h1>
+        <p class="muted" id="home_hero_sub" style="margin-bottom:8px;font-size:13px">دوستی با «یه روز همو ببینیم» ساخته نمی‌شه — با ساعت مشترک و قرار ثابت (مثلاً سه‌شنبه‌ها پیاده‌روی) ساخته می‌شه 🌿</p>
+        <details style="margin-bottom:12px;background:#f8f6ff;border:1px solid #e6dff9;border-radius:12px;padding:7px 11px">
+          <summary class="tiny" style="cursor:pointer;color:var(--p);font-weight:700;list-style:none;display:flex;align-items:center;justify-content:space-between">
+            <span>⏳ چرا قرار ثابت؟ (قانون ۲۰۰ ساعت دوستی)</span>
+            <span style="opacity:.7">▼</span>
+          </summary>
+          <p class="tiny" style="margin:6px 0 0;line-height:1.7;color:var(--ink)">
+            پژوهش‌ها نشان می‌دهد از آشنایی تا دوستی واقعی زمان مشترک لازم است: <b>۵۰ ساعت</b> تا دوست معمولی، <b>۹۰ ساعت</b> تا دوست، و <b>۲۰۰ ساعت</b> تا دوست صمیمی. سالی دو بار قهوه ۵۰ سال طول می‌کشد؛ اما یک <b>قرار ۲ ساعتهٔ هفتگی</b> در ۶ ماه می‌شود بیش از <b>۵۰ ساعت</b>!
+          </p>
+        </details>
 
         <div class="seg" style="margin-bottom:14px">
-          <button type="button" id="mode_create_tab" class="on">✨ ساخت ایونت</button>
-          <button type="button" id="mode_find_tab">🔍 پیدا کردن ایونت ${mine.length ? `<span class="badge" style="background:#e8e2fa;color:var(--p);padding:1px 7px;border-radius:10px;font-size:11.5px;margin-right:4px">${fa(mine.length)}</span>` : ""}</button>
+          <button type="button" id="mode_create_tab" class="on">✨ ساخت قرار</button>
+          <button type="button" id="mode_find_tab">🔍 پیدا کردن قرار ${mine.length ? `<span class="badge" style="background:#e8e2fa;color:var(--p);padding:1px 7px;border-radius:10px;font-size:11.5px;margin-right:4px">${fa(mine.length)}</span>` : ""}</button>
         </div>
 
         <div id="create_pane">
           <div style="margin-bottom:14px">
             <label class="f" style="margin-top:2px;font-weight:700">موضوع یا ایدهٔ قرار چیه؟</label>
-            <input type="text" id="c_title" list="c_idea_datalist" maxlength="80" placeholder="انتخاب کن یا خودت بنویس: کافه، دویدن، بردگیم…" style="font-size:15px;padding:10px 12px">
+            <input type="text" id="c_title" list="c_idea_datalist" maxlength="80" placeholder="مثلاً: سه‌شنبه‌ها پیاده‌روی، کافه و گپ، دویدن صبحگاهی…" style="font-size:15px;padding:10px 12px">
             <datalist id="c_idea_datalist">
               ${EVENT_IDEAS.map(idea => `<option value="${esc(idea.title)}">${esc(idea.label)}</option>`).join("")}
             </datalist>
@@ -955,6 +990,44 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               ${EVENT_IDEAS.map(idea => `
                 <span class="qidea" data-idea="${idea.k}">${idea.icon} ${esc(idea.label)}</span>
               `).join("")}
+            </div>
+          </div>
+
+          <div style="margin-bottom:14px">
+            <label class="f" style="margin-top:0">🔄 تکرار قرار (راز دوستی واقعی)</label>
+            <div class="seg sm" style="margin:0">
+              <button type="button" id="rhy_weekly" class="on" style="white-space:nowrap">🔄 هر هفته (پیشنهادی)</button>
+              <button type="button" id="rhy_biweekly" style="white-space:nowrap">🔁 هر دو هفته</button>
+              <button type="button" id="rhy_once" style="white-space:nowrap">1️⃣ یک‌باره</button>
+            </div>
+            <div id="c_rhy_box" style="margin-top:8px;padding:10px 12px;background:#f8f7fc;border:1px solid #e7e2f5;border-radius:12px">
+              <div class="row" style="gap:8px;flex-wrap:wrap">
+                <div style="flex:1;min-width:120px">
+                  <label class="f" style="margin-top:0;font-size:12.5px">روز ثابت پیشنهادی</label>
+                  <select id="c_rhy_day">
+                    <option value="any">با جمع هماهنگ می‌کنیم</option>
+                    <option value="sat">شنبه‌ها</option>
+                    <option value="sun">یکشنبه‌ها</option>
+                    <option value="mon">دوشنبه‌ها</option>
+                    <option value="tue">سه‌شنبه‌ها</option>
+                    <option value="wed">چهارشنبه‌ها</option>
+                    <option value="thu">پنجشنبه‌ها</option>
+                    <option value="fri">جمعه‌ها</option>
+                  </select>
+                </div>
+                <div style="flex:1;min-width:120px">
+                  <label class="f" style="margin-top:0;font-size:12.5px">بازهٔ زمانی</label>
+                  <select id="c_rhy_slot">
+                    <option value="any">هر ساعتی که بخوره</option>
+                    <option value="morning">🌅 صبح‌ها</option>
+                    <option value="afternoon">☀️ عصرها</option>
+                    <option value="evening">🌙 شب‌ها</option>
+                  </select>
+                </div>
+              </div>
+              <div class="tiny" id="c_rhy_hint" style="color:var(--p);font-weight:600;margin-top:6px">
+                ⏳ ۲ ساعت هر هفته ≈ ۵۲ ساعت در ۶ ماه (آشنا ← دوست واقعی!)
+              </div>
             </div>
           </div>
 
@@ -1022,7 +1095,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           </div>
 
           <div style="margin-bottom:14px">
-            <label class="f" style="margin-top:0">👁️ چه کسانی این ایونت را ببینند؟</label>
+            <label class="f" style="margin-top:0">🛡️ فضای امن و هم‌فازی (کی‌ها راحت‌ترن؟)</label>
             <div class="seg sm" style="margin:0">
               <button type="button" id="vis_public" class="on" style="white-space:nowrap">🌍 عمومی</button>
               <button type="button" id="vis_nearby" style="white-space:nowrap">📍 اطراف من</button>
@@ -1032,11 +1105,16 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               همه در لیست ایونت‌ها می‌بینند و می‌توانند اعلام حضور کنند.
             </div>
             <div class="chips" id="c_aud_chips" style="gap:6px">
+              <span class="chip sm" id="c_wo_chip">👩 فقط خانم‌ها</span>
               <span class="chip sm" data-smoke="no_smoke">🚭 بدون سیگار</span>
               <span class="chip sm" data-smoke="ok">🚬 سیگار اوکیم</span>
               <span class="chip sm" data-alc="no_alcohol">🥤 بدون الکل</span>
               <span class="chip sm" data-alc="ok">🍷 الکل اوکیم</span>
-              <span class="chip sm" id="c_wo_chip">👩 فقط خانم‌ها</span>
+              <span class="chip sm" data-audtag="veg">🥗 گیاهی / وگان</span>
+              <span class="chip sm" data-audtag="nl_friendly">🌿 هم‌فاز تجربه‌های مجاز هلند</span>
+              <span class="chip sm" data-audtag="adhd_friendly">🧠 بادی‌دبلینگ / ADHD</span>
+              <span class="chip sm" data-audtag="quiet">🤫 فضای آرام</span>
+              <span class="chip sm" data-audtag="no_photo">📸 بدون عکس/استوری</span>
             </div>
           </div>
 
@@ -1081,12 +1159,20 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             ${mine.length ? `<p class="muted tiny" style="margin-top:2px;margin-bottom:8px">روی هر ایونت بزن تا ساعت‌های آزاد و شهرهایت را بفرستی؛ سیستم بهترین زمان و شهر مشترک را پیدا می‌کند:</p>` : ""}
 
             ${mine.length ? `
-              <div class="chips" id="meetups_filter_bar" style="gap:5px;margin:6px 0 10px">
-                <span class="chip sm on" data-mfilter="all">همه (${fa(mine.length)})</span>
-                <span class="chip sm" data-mfilter="cafe">☕ کافه و غذا</span>
-                <span class="chip sm" data-mfilter="sport">🏃‍♀️ ورزش و دویدن</span>
-                <span class="chip sm" data-mfilter="game">🎲 بازی و مافیا</span>
-                <span class="chip sm" data-mfilter="walk">🌳 پیاده‌روی و پارک</span>
+              <div class="row" style="gap:6px;margin:6px 0 10px;align-items:center;justify-content:space-between">
+                <div class="chips" id="meetups_filter_bar" style="gap:5px;flex:1">
+                  <span class="chip sm on" data-mfilter="all">همه (${fa(mine.length)})</span>
+                  <span class="chip sm" data-mfilter="recurring">🔄 قرارهای ثابت</span>
+                  <span class="chip sm" data-mfilter="bodydouble">🧠 بادی‌دبلینگ</span>
+                  <span class="chip sm" data-mfilter="cafe">☕ کافه</span>
+                  <span class="chip sm" data-mfilter="sport">🏃‍♀️ ورزش</span>
+                  <span class="chip sm" data-mfilter="walk">🌳 پیاده‌روی</span>
+                  <span class="chip sm" data-mfilter="game">🎲 بازی</span>
+                </div>
+                <select id="meetups_city_filter" style="width:auto;min-width:115px;padding:5px 8px;font-size:12.5px;border-radius:10px">
+                  <option value="all">📍 همهٔ شهرها</option>
+                  ${CITIES.filter(c => c.meet).map(c => `<option value="${c.key}">${esc(c.fa)}</option>`).join("")}
+                </select>
               </div>
               <div id="meetups_list_container">
                 ${mine.map(m => {
@@ -1096,20 +1182,25 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               const isArchived = Boolean(m.is_archived || m.final?.archived);
               const expDate = m.expires_at || m.final?.expires_at;
               const isExpired = Boolean(m.is_expired || isDateExpired(expDate));
-              const locSummary = fmtLocation(m.location || m.final?.location, true);
+              const locObj = m.location || m.final?.location;
+              const locSummary = fmtLocation(locObj, true);
+              const rhyObj = m.rhythm || m.final?.rhythm;
+              const rhySummary = fmtRhythm(rhyObj, true);
               let cat = "other";
-              if (["☕","🍽️"].includes(icon)) cat = "cafe";
+              if (["🧠","📚"].includes(icon)) cat = "bodydouble";
+              else if (["☕","🍽️","🥗"].includes(icon)) cat = "cafe";
               else if (["🏃‍♀️","🏸","🚴"].includes(icon)) cat = "sport";
               else if (["🎲"].includes(icon)) cat = "game";
               else if (["🌳","🧺"].includes(icon)) cat = "walk";
               return `
-              <a class="meetup-item" data-mcat="${cat}" href="/d/${esc(m.code)}${m.admin && m.admin !== "account"?`?admin=${esc(m.admin)}`:""}">
+              <a class="meetup-item" data-mcat="${cat}" data-mrec="${rhyObj ? "1" : "0"}" data-mcity="${esc(locObj?.city || "")}" href="/d/${esc(m.code)}${m.admin && m.admin !== "account"?`?admin=${esc(m.admin)}`:""}">
                 <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:200px">
                   <div class="av-sm" style="background:${colorOf(m.organizer_name||'د')};width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:18px;flex:none">${icon}</div>
                   <div>
                     <div class="row" style="gap:6px;margin-bottom:3px;flex-wrap:wrap;align-items:center">
                       <b style="font-size:15px">${esc(m.title || (m.organizer_name ? "دورهمی " + m.organizer_name : "قرار دورهمی"))}</b>
                       <code class="tiny ltr" style="background:#eeeaf8;padding:1px 6px;border-radius:6px;color:var(--p)">#${esc(m.code)}</code>
+                      ${rhySummary ? `<span class="pill sm" style="background:#f3e8ff;color:#6b21a8">${esc(rhySummary)}</span>` : ''}
                       <span class="pill sm" style="background:${isPair?"#fff0f6":"#f0f5ff"};color:${isPair?"#d63384":"#0d6efd"}">${isPair ? "👯‍♀️ دونفره" : "👥 گروهی"}</span>
                       ${locSummary ? `<span class="pill sm" style="background:#eefbf6;color:#0e5f4d">${esc(locSummary)}</span>` : ''}
                       ${isArchived ? '<span class="pill sm" style="background:#fff3d4;color:#8a5a00">📦 آرشیو</span>' : ''}
@@ -1243,6 +1334,23 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     if ($("#seg_open")) $("#seg_open").onclick = () => setSegMode(true);
     if ($("#seg_fixed")) $("#seg_fixed").onclick = () => setSegMode(false);
 
+    let rhyFreq = "weekly";
+    const setRhyFreq = (freq) => {
+      rhyFreq = freq;
+      $("#rhy_weekly")?.classList.toggle("on", freq === "weekly");
+      $("#rhy_biweekly")?.classList.toggle("on", freq === "biweekly");
+      $("#rhy_once")?.classList.toggle("on", freq === "once");
+      if ($("#c_rhy_box")) $("#c_rhy_box").style.display = freq === "once" ? "none" : "block";
+      if ($("#c_rhy_hint")) {
+        $("#c_rhy_hint").textContent = freq === "biweekly"
+          ? "⏳ ۲ ساعت هر دو هفته ≈ ۲۶ ساعت در ۶ ماه (قدم اول دوستی پایدار!)"
+          : "⏳ ۲ ساعت هر هفته ≈ ۵۲ ساعت در ۶ ماه (آشنا ← دوست واقعی!)";
+      }
+    };
+    if ($("#rhy_weekly")) $("#rhy_weekly").onclick = () => setRhyFreq("weekly");
+    if ($("#rhy_biweekly")) $("#rhy_biweekly").onclick = () => setRhyFreq("biweekly");
+    if ($("#rhy_once")) $("#rhy_once").onclick = () => setRhyFreq("once");
+
     let locMode = "flexible";
     const setLocMode = (mode) => {
       locMode = mode;
@@ -1274,6 +1382,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     let visMode = "public";
     let smokePref = "any";
     let alcPref = "any";
+    const audTags = new Set();
     const setVisMode = (mode) => {
       visMode = mode;
       $("#vis_public")?.classList.toggle("on", mode === "public");
@@ -1303,6 +1412,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         const v = el.dataset.alc;
         alcPref = alcPref === v ? "any" : v;
         $("#c_aud_chips").querySelectorAll("[data-alc]").forEach(x => x.classList.toggle("on", x.dataset.alc === alcPref));
+      };
+    });
+    $("#c_aud_chips")?.querySelectorAll("[data-audtag]").forEach(el => {
+      el.onclick = () => {
+        const t = el.dataset.audtag;
+        if (audTags.has(t)) audTags.delete(t); else audTags.add(t);
+        el.classList.toggle("on", audTags.has(t));
       };
     });
 
@@ -1355,17 +1471,30 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       };
     });
 
+    let curFilter = "all";
+    let curCityFilter = "all";
+    const applyMeetupFilters = () => {
+      $("#meetups_list_container")?.querySelectorAll(".meetup-item").forEach(item => {
+        const matchCat = curFilter === "all"
+          || (curFilter === "recurring" ? item.dataset.mrec === "1" : item.dataset.mcat === curFilter);
+        const matchCity = curCityFilter === "all" || item.dataset.mcity === curCityFilter;
+        item.style.display = (matchCat && matchCity) ? "flex" : "none";
+      });
+    };
     $("#meetups_filter_bar")?.querySelectorAll("[data-mfilter]").forEach(b => {
       b.onclick = () => {
         $("#meetups_filter_bar").querySelectorAll("[data-mfilter]").forEach(x => x.classList.remove("on"));
         b.classList.add("on");
-        const f = b.dataset.mfilter;
-        $("#meetups_list_container")?.querySelectorAll(".meetup-item").forEach(item => {
-          const match = f === "all" || item.dataset.mcat === f;
-          item.style.display = match ? "flex" : "none";
-        });
+        curFilter = b.dataset.mfilter;
+        applyMeetupFilters();
       };
     });
+    if ($("#meetups_city_filter")) {
+      $("#meetups_city_filter").onchange = (e) => {
+        curCityFilter = e.target.value || "all";
+        applyMeetupFilters();
+      };
+    }
 
     async function createMeetup(forceOpen?: boolean) {
       const isOpen = forceOpen !== undefined ? forceOpen : openSchedule;
@@ -1400,16 +1529,21 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             };
           }
         }
-        const audPayload = (visMode !== "public" || smokePref !== "any" || alcPref !== "any")
-          ? { visibility: visMode, smoke: smokePref, alcohol: alcPref }
+        const tagsArr = Array.from(audTags);
+        const audPayload = (visMode !== "public" || smokePref !== "any" || alcPref !== "any" || tagsArr.length)
+          ? { visibility: visMode, smoke: smokePref, alcohol: alcPref, ...(tagsArr.length ? { tags: tagsArr } : {}) }
+          : null;
+        const rhyPayload = rhyFreq !== "once"
+          ? { freq: rhyFreq, day: $("#c_rhy_day")?.value || "any", slot: $("#c_rhy_slot")?.value || "any" }
           : null;
         const r = await rpc("dh_create", {p_title:title, p_note:note, p_organizer:orgName, p_options:good, p_women_only:wo});
-        if (expDate || locPayload || audPayload) {
+        if (expDate || locPayload || audPayload || rhyPayload) {
           try {
             const editBody: any = { code: r.code, admin_token: r.admin_token, action: "edit" };
             if (expDate) editBody.expires_at = expDate;
             if (locPayload) editBody.location = locPayload;
             if (audPayload) editBody.audience = audPayload;
+            if (rhyPayload) editBody.rhythm = rhyPayload;
             await fetch("/api/d/manage", {
               method: "POST",
               headers: { "content-type": "application/json" },
@@ -1417,7 +1551,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             });
           } catch(e){}
         }
-        store.set("dh_"+r.code, {title, organizer_name: orgName, admin:r.admin_token, location: locPayload, audience: audPayload});
+        store.set("dh_"+r.code, {title, organizer_name: orgName, admin:r.admin_token, location: locPayload, audience: audPayload, rhythm: rhyPayload});
         profilesLoaded = false;
         go(`/d/${r.code}?admin=${r.admin_token}&new=1`);
       } catch(e){
@@ -1456,7 +1590,8 @@ export function mount(root: HTMLElement, opts: DhOptions) {
 
   function shareText(){
     const locTxt = fmtLocation(M.final?.location);
-    return `سلام 🌿 برای «${M.title}» (کد دورهمی: ${M.code})${locTxt ? `\n${locTxt}` : ""}\nاین لینک را باز کنید و بگویید چه ساعت‌هایی و تا چه محدوده‌ای روی نقشه می‌توانید بیایید:\n${linkFor(M.code)}`;
+    const rhyTxt = fmtRhythm(M.final?.rhythm);
+    return `سلام 🌿 برای «${M.title}» (کد دورهمی: ${M.code})${rhyTxt ? `\n${rhyTxt}` : ""}${locTxt ? `\n${locTxt}` : ""}\nاین لینک را باز کنید و بگویید چه ساعت‌هایی و تا چه محدوده‌ای می‌توانید بیایید:\n${linkFor(M.code)}`;
   }
   function shareButtons(){
     return `
@@ -1485,11 +1620,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const expDate = M.expires_at || M.final?.expires_at;
     const isExpired = Boolean(M.is_expired || isDateExpired(expDate));
     const locLine = fmtLocation(M.final?.location);
+    const rhyLine = fmtRhythm(M.final?.rhythm);
     const audBadges = fmtAudience(M.final?.audience, Boolean(M.women_only));
     app.innerHTML = topbar() + `
       <header class="top"><span class="logo">${detectActivityIcon(M.title)}</span><div><b>${esc(M.title)}</b><small>ساخته شد · کد: <span class="ltr">#${esc(M.code)}</span></small></div></header>
       ${isArchived ? `<div class="okbox" style="margin:8px 0;background:#fff8e6;border-color:#f6d899;color:#8a5a00">📦 <b>این دورهمی آرشیو شده است</b> (فقط برای افراد دارای لینک قابل مشاهده است).</div>` : ""}
       ${isExpired ? `<div class="okbox" style="margin:8px 0;background:#fff0f0;border-color:#ffd0d0;color:#c92a2a">⏰ <b>مهلت یا تاریخ انقضای این دورهمی به پایان رسیده است.</b></div>` : (expDate ? `<div class="tiny" style="color:var(--muted);margin-bottom:6px">⏰ مهلت اعلام حضور تا: <b>${fmtDate(expDate)}</b></div>` : "")}
+      ${rhyLine ? `<div class="okbox" style="margin:8px 0;background:#f5f0ff;border-color:#d8c8fb;color:#5b21b6">${esc(rhyLine)}</div>` : ""}
       ${locLine ? `<div class="okbox" style="margin:8px 0;background:#eefbf6;border-color:#b7ebd6;color:#0e5f4d">${esc(locLine)}</div>` : ""}
       ${audBadges.length ? `<div class="row" style="gap:6px;margin:6px 0 8px">${audBadges.map(b => `<span class="pill sm" style="background:#f3f0ff;color:var(--p)">${esc(b)}</span>`).join("")}</div>` : ""}
       <div class="card"><div class="row" style="gap:10px;margin-bottom:6px"><span class="hero-e" style="font-size:34px">🎉</span><h1 style="margin:0">آماده است!</h1></div>
@@ -2000,11 +2137,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const expDate = M.expires_at || M.final?.expires_at;
     const isExpired = Boolean(M.is_expired || isDateExpired(expDate));
     const locLine = fmtLocation(M.final?.location);
+    const rhyLine = fmtRhythm(M.final?.rhythm);
     const audBadges = fmtAudience(M.final?.audience, Boolean(M.women_only));
     app.innerHTML = topbar() + `
       <header class="top"><span class="logo">${detectActivityIcon(M.title)}</span><div><b>${esc(M.title)}</b><small>${fa(A.n)} نفر فرم را پر کرده‌اند${M.organizer_name?" · برگزارکننده: "+esc(M.organizer_name):""}</small></div></header>
       ${isArchived ? `<div class="okbox" style="margin:8px 0;background:#fff8e6;border-color:#f6d899;color:#8a5a00">📦 <b>این دورهمی آرشیو شده است</b> (از لیست عمومی پنهان است اما با لینک در دسترس است).</div>` : ""}
       ${isExpired ? `<div class="okbox" style="margin:8px 0;background:#fff0f0;border-color:#ffd0d0;color:#c92a2a">⏰ <b>مهلت اعلام حضور یا تاریخ انقضای این دورهمی به پایان رسیده است.</b></div>` : (expDate ? `<div class="tiny" style="color:var(--muted);margin-bottom:6px">⏰ مهلت اعلام حضور تا: <b>${fmtDate(expDate)}</b></div>` : "")}
+      ${rhyLine ? `<div class="okbox" style="margin:8px 0;background:#f5f0ff;border-color:#d8c8fb;color:#5b21b6">${esc(rhyLine)}</div>` : ""}
       ${locLine ? `<div class="okbox" style="margin:8px 0;background:#eefbf6;border-color:#b7ebd6;color:#0e5f4d">${esc(locLine)}</div>` : ""}
       ${audBadges.length ? `<div class="row" style="gap:6px;margin:6px 0 8px">${audBadges.map(b => `<span class="pill sm" style="background:#f3f0ff;color:var(--p)">${esc(b)}</span>`).join("")}</div>` : ""}
       ${detectTargetType(M.title, M.note) === "pair" ? `<div class="pill sm" style="background:#fff0f6;color:#d63384;display:inline-block;margin-bottom:8px">👯‍♀️ قرار همراهی دو‌نفره (هم‌پا)</div>` : ""}
@@ -2392,6 +2531,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       if (M.final?.expires_at || M.expires_at) fin.expires_at = M.final?.expires_at || M.expires_at;
       if (M.final?.location) fin.location = M.final.location;
       if (M.final?.audience) fin.audience = M.final.audience;
+      if (M.final?.rhythm) fin.rhythm = M.final.rhythm;
       try { await rpc("dh_finalize", {p_code:CODE, p_admin:ADMIN, p_final:fin}); toast("قطعی شد ✓");
         const city = (cityByKey(fin.city)||{}).fa || "";
         const txt = `✅ «${M.title}» قطعی شد:\n📅 ${fmtDate(fin.d)} ساعت ${fin.t}\n📍 ${fin.venue}${city?" — "+city:""}\nجزئیات و تقویم: ${linkFor(CODE)}`;
@@ -2405,6 +2545,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       if (M.final?.expires_at || M.expires_at) keepMeta.expires_at = M.final?.expires_at || M.expires_at;
       if (M.final?.location) keepMeta.location = M.final.location;
       if (M.final?.audience) keepMeta.audience = M.final.audience;
+      if (M.final?.rhythm) keepMeta.rhythm = M.final.rhythm;
       const nextFinal = Object.keys(keepMeta).length ? keepMeta : null;
       try { await rpc("dh_finalize", {p_code:CODE, p_admin:ADMIN, p_final:nextFinal}); M.final = nextFinal; profilesLoaded = false; resultPage(); } catch(e){ toast(errMsg(e)); }
     };

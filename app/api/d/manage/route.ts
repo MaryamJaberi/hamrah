@@ -108,17 +108,38 @@ export async function POST(req: Request) {
           const vis = ['public', 'nearby', 'private'].includes(body.audience.visibility) ? body.audience.visibility : 'public';
           const smoke = ['any', 'no_smoke', 'ok'].includes(body.audience.smoke) ? body.audience.smoke : 'any';
           const alcohol = ['any', 'no_alcohol', 'ok'].includes(body.audience.alcohol) ? body.audience.alcohol : 'any';
-          audience = (vis === 'public' && smoke === 'any' && alcohol === 'any')
+          const allowedTags = new Set(['veg', 'nl_friendly', 'adhd_friendly', 'quiet', 'no_photo']);
+          const tags = Array.isArray(body.audience.tags)
+            ? Array.from(new Set(body.audience.tags.filter((t: unknown) => typeof t === 'string' && allowedTags.has(t))))
+            : [];
+          audience = (vis === 'public' && smoke === 'any' && alcohol === 'any' && !tags.length)
             ? null
-            : { visibility: vis, smoke, alcohol };
+            : { visibility: vis, smoke, alcohol, ...(tags.length ? { tags } : {}) };
         } else {
           audience = null;
         }
       }
 
-      const newFinal: Record<string, any> = { ...currentFinal, expires_at, location, audience };
+      let rhythm: Record<string, any> | null = currentFinal.rhythm ?? null;
+      if (body.rhythm !== undefined) {
+        if (body.rhythm && typeof body.rhythm === 'object' && ['weekly', 'biweekly', 'once'].includes(body.rhythm.freq)) {
+          const freq = body.rhythm.freq;
+          if (freq === 'once') {
+            rhythm = null;
+          } else {
+            const day = typeof body.rhythm.day === 'string' ? body.rhythm.day.trim().slice(0, 16) : 'any';
+            const slot = typeof body.rhythm.slot === 'string' ? body.rhythm.slot.trim().slice(0, 16) : 'any';
+            rhythm = { freq, day, slot };
+          }
+        } else {
+          rhythm = null;
+        }
+      }
+
+      const newFinal: Record<string, any> = { ...currentFinal, expires_at, location, audience, rhythm };
       if (!location) delete newFinal.location;
       if (!audience) delete newFinal.audience;
+      if (!rhythm) delete newFinal.rhythm;
       const updates: Record<string, any> = {
         title,
         note,
@@ -145,6 +166,7 @@ export async function POST(req: Request) {
         expires_at,
         location,
         audience,
+        rhythm,
         is_archived: Boolean(m.is_archived || currentFinal.archived),
       });
     }
