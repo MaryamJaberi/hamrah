@@ -37,8 +37,10 @@ export async function POST(req: Request) {
     );
     const mySmoke = typeof body.smoke === 'string' ? body.smoke : '';
     const myAlcohol = typeof body.alcohol === 'string' ? body.alcohol : '';
+    const myPsych = (body.psych && typeof body.psych === 'object' ? body.psych : {}) as Record<string, string>;
 
-    if (!myChallenges.length) {
+    const hasMyPsych = Object.keys(myPsych).length > 0;
+    if (!myChallenges.length && !hasMyPsych) {
       return NextResponse.json({ matches: [] });
     }
 
@@ -73,6 +75,7 @@ export async function POST(req: Request) {
       shared_challenges: string[];
       shared_cities: string[];
       shared_hobbies: string[];
+      psych_fit: boolean;
       score: number;
     }> = [];
 
@@ -81,11 +84,21 @@ export async function POST(req: Request) {
       const theirChallenges: string[] = Array.isArray(d.private_challenges)
         ? d.private_challenges.filter((c: unknown) => typeof c === 'string' && ALLOWED_CHALLENGES.has(c))
         : [];
-      if (!theirChallenges.length) continue;
 
       // Double-blind intersection: ONLY challenges both selected
       const shared_challenges = theirChallenges.filter((c) => myChallengeSet.has(c));
-      if (!shared_challenges.length) continue;
+
+      // Hidden psych compatibility (zero disclosure: never return their psych keys!)
+      const theirPsych = (d.psych && typeof d.psych === 'object' ? d.psych : {}) as Record<string, string>;
+      let psychOverlap = 0;
+      for (const pk of ['social_energy', 'friendship_style', 'focus_rhythm', 'social_lang']) {
+        if (myPsych[pk] && theirPsych[pk] && myPsych[pk] === theirPsych[pk]) {
+          psychOverlap++;
+        }
+      }
+
+      // Require either a shared private challenge OR strong psych fit (>= 2 matching hidden dimensions)
+      if (!shared_challenges.length && psychOverlap < 2) continue;
 
       // Boundary compatibility check (avoid hard smoke/alcohol clashes)
       if (mySmoke === 'bothers' && d.smoke === 'smoke') continue;
@@ -105,12 +118,17 @@ export async function POST(req: Request) {
       ];
       const shared_hobbies = Array.from(new Set(theirHobbies.filter((h) => myHobbies.has(h))));
 
-      const score = shared_challenges.length * 40 + shared_cities.length * 25 + shared_hobbies.length * 10;
+      const score =
+        shared_challenges.length * 40 +
+        psychOverlap * 18 +
+        shared_cities.length * 25 +
+        shared_hobbies.length * 10;
       matches.push({
         name: person.name,
         shared_challenges,
         shared_cities,
         shared_hobbies,
+        psych_fit: psychOverlap >= 1,
         score,
       });
     }

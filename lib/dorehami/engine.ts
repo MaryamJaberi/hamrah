@@ -3,6 +3,8 @@
 // then wired into Hamrah (Supabase client, accounts, outing plans). Every user string is escaped with esc().
 // Routes (History API): /d  ·  /d/<code>  ·  /d/<code>?admin=<token>&new=1  ·  ?form=1  ·  ?tab=result|people|ice|share
 
+import { PSYCH_QUIZZES, scoreQuizResult, computeEventMatch } from './psych';
+
 export type DhPrefill = Record<string, any> | null;
 export type DhOptions = {
   sb: any;                         // Supabase browser client (anon or signed-in)
@@ -673,7 +675,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     });
   }
 
-  function openProfileModal(initialProf = null) {
+  function openProfileModal(initialProf = null, initialTab: "profile" | "psych" = "profile") {
     let existing = document.getElementById("dh_prof_modal");
     if (existing) existing.remove();
     const cached = store.get("dh_last");
@@ -689,22 +691,129 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const wrap = document.createElement("div");
     wrap.id = "dh_prof_modal";
     wrap.className = "drawer-backdrop";
+    let activeTab: "profile" | "psych" = initialTab;
+    let activeQuizKey: string | null = null;
+    let quizAnswers: string[] = [];
+
+    const ensureProfileObj = () => {
+      if (!p) {
+        p = {
+          name: USER?.name || cached?.name || "مهمان",
+          email: cached?.email || "",
+          data: { ...(cached?.data || {}), free_windows: cached?.data?.free_windows || [], can_cities: cached?.data?.can_cities || [], max_min: 45 },
+          public_fields: cached?.pub || ["origin", "can_cities", "free_windows", "activities", "hobbies"],
+        };
+      }
+      p.data = p.data || {};
+      p.public_fields = Array.isArray(p.public_fields) ? p.public_fields : ["origin", "can_cities", "free_windows", "activities", "hobbies"];
+      return p;
+    };
+
+    const isPubGroup = (keys: string[]) => {
+      const pf = Array.isArray(p?.public_fields) ? p.public_fields : ["origin", "can_cities", "free_windows", "activities", "hobbies"];
+      return keys.some(k => pf.includes(k));
+    };
+
+    const renderVisPill = (groupKey: string, keys: string[]) => {
+      const on = isPubGroup(keys);
+      return `<button type="button" class="pill sm" data-pmvis="${groupKey}" style="cursor:pointer;border:1px solid ${on ? "#b7ebd6" : "#d9d0f2"};background:${on ? "#eefbf6" : "#f5f1ff"};color:${on ? "#0e5f4d" : "var(--p)"};font-weight:700">${on ? "👁️ عمومی (قابل دیدن)" : "🔒 مخفی (فقط الگوریتم)"}</button>`;
+    };
 
     const drawModal = () => {
-      const d = (p && p.data) ? p.data : {};
+      const d = (p && p.data) ? p.data : (cached?.data || {});
+      const psych = (d.psych && typeof d.psych === "object") ? d.psych : {};
+      const psychCount = Object.keys(psych).filter(k => Boolean(psych[k])).length;
       const emailVal = p?.email || d.email || "";
       const ORDER = ["origin","can_cities","free_windows","free_note","modes","max_min","activities","budget","diet","hobbies","age","job","about","question"];
       const tags = p ? ORDER.map(k => { const v = showVal(k, d[k]); return v ? `<span class="summary-tag"><b>${LABEL[k]}:</b>${esc(v)}</span>` : ""; }).filter(Boolean).join("") : "";
       const shareUrl = p ? `${location.origin}/d?u=${encodeURIComponent(p.name)}` : "";
       const shareTxt = p ? `پروفایل و ساعت‌های آزاد ${p.name} در دورهمی همراه 🌿:\n${shareUrl}` : "";
 
+      const renderPsychPane = () => {
+        if (activeQuizKey) {
+          const quiz = PSYCH_QUIZZES.find(q => q.key === activeQuizKey);
+          if (quiz) {
+            return `
+              <div style="background:#fbfaff;border:1.5px solid #dfd7f3;border-radius:14px;padding:14px">
+                <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:8px">
+                  <b style="font-size:15px">${quiz.icon} ${esc(quiz.title)}</b>
+                  <button type="button" class="btn line sm" id="pq_back">← بازگشت</button>
+                </div>
+                <p class="tiny muted" style="margin:0 0 12px">${esc(quiz.sourceNote)} · نتیجه فقط برای خودت نمایش داده می‌شود و کاملاً مخفی می‌ماند.</p>
+                ${quiz.questions.map((item, qi) => `
+                  <div style="margin-bottom:12px;padding:10px;background:#fff;border:1px solid #ece7f9;border-radius:12px">
+                    <b style="font-size:13px;display:block;margin-bottom:8px">${fa(qi + 1)}. ${esc(item.q)}</b>
+                    <div style="display:flex;flex-direction:column;gap:6px">
+                      ${item.options.map(opt => {
+                        const sel = quizAnswers[qi] === opt.value;
+                        return `<button type="button" class="btn ${sel ? "" : "line"} sm" data-pq-ans="${qi}:${opt.value}" style="text-align:right;justify-content:flex-start;padding:8px 10px;font-weight:${sel ? "700" : "500"}">${esc(opt.label)}</button>`;
+                      }).join("")}
+                    </div>
+                  </div>
+                `).join("")}
+                <button type="button" class="btn block" id="pq_finish">✨ دیدن نتیجه و ذخیرهٔ مخفی در پروفایل</button>
+              </div>
+            `;
+          }
+        }
+        return `
+          <div style="background:linear-gradient(135deg,#f8f5ff 0%,#eef7f6 100%);border:1.5px solid #d9d0f2;border-radius:14px;padding:12px 14px;margin-bottom:12px">
+            <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:4px">
+              <b style="font-size:14.5px;color:var(--p)">🧩 خودشناسی و تست‌های رایگان روانشناسی</b>
+              <span class="pill sm" style="background:#fff;color:var(--p)">🔒 ۱۰۰٪ مخفی</span>
+            </div>
+            <p class="tiny muted" style="margin:0;line-height:1.65">
+              این تست‌های کوتاه و علمی (بر پایهٔ مدل‌های معتبر روانشناسی) فقط برای شناخت بهتر خودت هستند. <b>هیچ‌کس دیگر نتیجهٔ تستت را نمی‌بیند</b>؛ فقط الگوریتم «همراه» از آن استفاده می‌کند تا ایونت‌ها و هم‌مسیرهای سازگارتر را برایت بالاتر بیاورد.
+            </p>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            ${PSYCH_QUIZZES.map(q => {
+              const resKey = psych[q.key];
+              const info = resKey ? q.traits[resKey] : null;
+              return `
+                <div style="background:#fff;border:1.5px solid ${info ? "#b7ebd6" : "#e5dff5"};border-radius:14px;padding:12px">
+                  <div class="row" style="justify-content:space-between;align-items:flex-start;gap:8px">
+                    <div style="flex:1">
+                      <b style="font-size:14px;display:block">${q.icon} ${esc(q.title)}</b>
+                      <span class="tiny muted">${esc(q.subtitle)}</span>
+                    </div>
+                    <button type="button" class="btn ${info ? "line" : "ghost"} sm" data-pq-start="${q.key}">${info ? "انجام دوباره" : "شروع تست ←"}</button>
+                  </div>
+                  ${info ? `
+                    <div style="margin-top:8px;padding:9px 11px;background:#f4fbf8;border-radius:10px;border:1px solid #d2f2e5">
+                      <div class="row" style="justify-content:space-between;margin-bottom:3px">
+                        <b style="font-size:13px;color:#0e5f4d">✓ تیپ تو: ${esc(info.title)}</b>
+                        <span class="tiny" style="color:var(--p)">🔒 فقط برای تو و الگوریتم</span>
+                      </div>
+                      <p class="tiny" style="margin:0 0 4px;line-height:1.6">${esc(info.desc)}</p>
+                      <p class="tiny muted" style="margin:0">✨ ${esc(info.tip)}</p>
+                    </div>
+                  ` : ""}
+                </div>
+              `;
+            }).join("")}
+          </div>
+          ${psychCount > 0 ? `
+            <div style="margin-top:12px;text-align:center">
+              <button type="button" class="btn block" id="pq_apply_home">✨ اعمال روی لیست قرارها و بستن</button>
+            </div>
+          ` : ""}
+        `;
+      };
+
       wrap.innerHTML = `
         <div class="drawer">
           <div class="row" style="justify-content:space-between;margin-bottom:10px">
-            <b style="font-size:17px">👤 پروفایل شخصی من</b>
+            <b style="font-size:17px">👤 پروفایل و خودشناسی من</b>
             <button type="button" class="btn line sm" id="pm_close">✕ بستن</button>
           </div>
 
+          <div class="seg sm" style="margin-bottom:12px">
+            <button type="button" id="pm_tab_prof" class="${activeTab === "profile" ? "on" : ""}">👤 پروفایل و حریم خصوصی</button>
+            <button type="button" id="pm_tab_psych" class="${activeTab === "psych" ? "on" : ""}">🧩 خودشناسی ${psychCount ? `(${fa(psychCount)}/${fa(PSYCH_QUIZZES.length)})` : "(رایگان)"}</button>
+          </div>
+
+          ${activeTab === "psych" ? renderPsychPane() : `
           <div style="background:#f7f5ff;border:1.5px solid #e2dcf7;border-radius:14px;padding:12px;margin-bottom:12px">
             ${USER ? `
               <div class="row" style="justify-content:space-between;align-items:center">
@@ -744,7 +853,10 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             ${tags ? `<div class="summary-tags">${tags}</div>` : ""}
 
             <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #d8caec">
-              <b style="font-size:13.5px;display:block;margin-bottom:4px">📍 شهرهایی که اوکی هستم بیایم (مبدأ و دایره اختیاری است):</b>
+              <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px">
+                <b style="font-size:13.5px">📍 شهرهایی که اوکی هستم بیایم:</b>
+                ${renderVisPill("origin", ["origin","can_cities","time_locations"])}
+              </div>
               ${renderLocationControl(d, "pm_loc")}
               <div id="hp_map" class="map-box"></div>
               <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
@@ -759,15 +871,35 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               </div>
               ${renderTimeLocLinker(d, "pm_loc")}
 
-              <b style="font-size:13.5px;display:block;margin:12px 0 4px">🗓️ جدول ساعت‌ها و روزهای آزاد هفتگی من:</b>
+              <div class="row" style="justify-content:space-between;align-items:center;margin:14px 0 4px;gap:6px">
+                <b style="font-size:13.5px">🗓️ ساعت‌ها و روزهای آزاد هفتگی:</b>
+                ${renderVisPill("avail", ["avail","free_windows","free_note"])}
+              </div>
               <div id="hp_wins">
                 ${renderWeekGrid(d.free_windows || [], "hpwin")}
+              </div>
+
+              <div style="margin-top:14px;padding:10px 12px;border-radius:12px;background:#faf9fe;border:1px solid #e7e2f5">
+                <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px">
+                  <b style="font-size:13px">🛡️ مرزهای سبک زندگی (سیگار و الکل):</b>
+                  ${renderVisPill("life", ["smoke","alcohol","weed"])}
+                </div>
+                <div class="chips" style="gap:6px">
+                  <span class="chip sm ${d.smoke==="bothers"?"on":""}" data-pmsmoke="bothers">🚭 سیگار اذیتم می‌کند</span>
+                  <span class="chip sm ${d.smoke==="ok"?"on":""}" data-pmsmoke="ok">🤷‍♀️ با سیگار مشکلی ندارم</span>
+                  <span class="chip sm ${d.alcohol==="none_place"?"on":""}" data-pmalc="none_place">🥤 بدون الکل ترجیح می‌دهم</span>
+                  <span class="chip sm ${d.alcohol==="ok"?"on":""}" data-pmalc="ok">🍷 با الکل مشکلی ندارم</span>
+                </div>
+                <div class="row" style="justify-content:space-between;align-items:center;margin-top:10px;padding-top:8px;border-top:1px dashed #e2dcf5">
+                  <span class="tiny">✨ علایق و فعالیت‌های من</span>
+                  ${renderVisPill("activities", ["activities","hobbies"])}
+                </div>
               </div>
 
               <div style="margin-top:14px;padding:12px 14px;border-radius:14px;background:linear-gradient(135deg,#f8f5ff 0%,#eef7f6 100%);border:1.5px solid #d9d0f2">
                 <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:4px">
                   <b style="font-size:13.5px;color:var(--p)">🔒 بخش محرمانه (فقط بین تو و سیستم)</b>
-                  <span class="pill sm" style="background:#fff;color:var(--p)">کاملاً پنهان</span>
+                  <span class="pill sm" style="background:#fff;color:var(--p)">همیشه پنهان</span>
                 </div>
                 <p class="tiny muted" style="margin:0 0 8px;line-height:1.6">
                   هیچ‌کس دیگر این گزینه‌ها را نمی‌بیند. فقط اگر نفر دیگری دقیقاً همین مسیر را انتخاب کرده باشد و شهر یا محدودیت‌هایتان بهم بخورد، سیستم هر دویتان را به هم معرفی می‌کند:
@@ -791,11 +923,76 @@ export function mount(root: HTMLElement, opts: DhOptions) {
                 <a class="btn line sm" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(shareTxt)}">واتس‌اپ</a>
               </div>
             </div>
-          ` : `<p class="muted center" style="padding:12px 0">نام یا جیمیلت را بالا وارد کن تا پروفایل شخصی‌ات ساخته یا بازیابی شود.</p>`}
+          ` : `
+            <div style="text-align:center;padding:12px 0">
+              <p class="muted" style="margin:0 0 10px">هنوز پروفایلی نساختی — می‌توانی همین الان یک تست کوتاه خودشناسی بدهی تا سیستم قرارهای مناسب‌تر را برایت اولویت‌بندی کند:</p>
+              <button type="button" class="btn ghost sm" id="pm_go_psych">🧩 شروع تست‌های رایگان خودشناسی ←</button>
+            </div>
+          `}
+          `}
         </div>`;
 
       wrap.querySelector("#pm_close").onclick = () => { clearAuxMaps(); wrap.remove(); };
       wrap.onclick = (ev) => { if (ev.target === wrap) { clearAuxMaps(); wrap.remove(); } };
+      const tabProf = wrap.querySelector("#pm_tab_prof");
+      const tabPsych = wrap.querySelector("#pm_tab_psych");
+      if (tabProf) tabProf.onclick = () => { activeTab = "profile"; activeQuizKey = null; drawModal(); };
+      if (tabPsych) tabPsych.onclick = () => { activeTab = "psych"; drawModal(); };
+      const goPsychBtn = wrap.querySelector("#pm_go_psych");
+      if (goPsychBtn) goPsychBtn.onclick = () => { activeTab = "psych"; drawModal(); };
+
+      // Wire self-discovery quizzes
+      if (activeTab === "psych") {
+        wrap.querySelectorAll("[data-pq-start]").forEach(el => {
+          el.onclick = () => {
+            activeQuizKey = el.dataset.pqStart;
+            quizAnswers = [];
+            drawModal();
+          };
+        });
+        const pqBack = wrap.querySelector("#pq_back");
+        if (pqBack) pqBack.onclick = () => { activeQuizKey = null; drawModal(); };
+        wrap.querySelectorAll("[data-pq-ans]").forEach(el => {
+          el.onclick = () => {
+            const [qiStr, val] = el.dataset.pqAns.split(":");
+            quizAnswers[Number(qiStr)] = val;
+            drawModal();
+          };
+        });
+        const pqFinish = wrap.querySelector("#pq_finish");
+        if (pqFinish && activeQuizKey) {
+          pqFinish.onclick = async () => {
+            const quiz = PSYCH_QUIZZES.find(q => q.key === activeQuizKey);
+            if (!quiz) return;
+            if (quizAnswers.filter(Boolean).length < quiz.questions.length) {
+              toast("لطفاً به هر ۳ سؤال جواب بده 🙂");
+              return;
+            }
+            const trait = scoreQuizResult(quizAnswers);
+            const prof = ensureProfileObj();
+            prof.data.psych = { ...(prof.data.psych || {}), [quiz.key]: trait };
+            const safePub = (prof.public_fields || []).filter((f: string) => f !== "private_challenges" && f !== "psych");
+            store.set("dh_last", { name: prof.name, email: prof.email || "", data: prof.data, pub: safePub, saved: true });
+            if (prof.name && prof.name !== "مهمان") {
+              fetch("/api/d/profiles", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: prof.name, email: prof.email || null, data: prof.data, public_fields: safePub })
+              }).catch(() => {});
+            }
+            activeQuizKey = null;
+            toast("نتیجه به صورت مخفی در پروفایلت ذخیره شد 🔒✓");
+            drawModal();
+          };
+        }
+        const pqApply = wrap.querySelector("#pq_apply_home");
+        if (pqApply) pqApply.onclick = () => {
+          clearAuxMaps();
+          wrap.remove();
+          if (location.pathname === "/d") homePage();
+        };
+        return;
+      }
 
       wrap.querySelectorAll("[data-pmpick]").forEach(el => el.onclick = () => {
         const kp = KNOWN_PROFILES.find(x => x.name === el.dataset.pmpick);
@@ -882,7 +1079,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           const nm = (wrap.querySelector("#pm_name")?.value || "").trim() || p.name;
           p.name = nm;
           if (em) { p.email = em; p.data.email = em; }
-          const safePub = (p.public_fields || ["origin","can_cities","free_windows","activities","hobbies","email"]).filter((f: string) => f !== "private_challenges");
+          const safePub = (p.public_fields || ["origin","can_cities","free_windows","activities","hobbies","email"]).filter((f: string) => f !== "private_challenges" && f !== "psych");
           saveBtn.disabled = true;
           try {
             await fetch("/api/d/profiles", {
@@ -893,10 +1090,48 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             store.set("dh_last", { name: p.name, email: p.email || "", data: p.data || {}, pub: safePub, saved: true });
             const tb = $("#tb_prof_btn"); if (tb) tb.textContent = `👤 پروفایل ${p.name}${p.email?" ✓":""}`;
             if ($("#c_org") && !$("#c_org").value) $("#c_org").value = p.name;
-            toast("پروفایل و محدودهٔ حرکتت ذخیره شد ✓");
+            toast("پروفایل و تنظیمات حریم خصوصی ذخیره شد ✓");
           } catch(e) { toast("ذخیره نشد"); }
           saveBtn.disabled = false;
         };
+
+        const VIS_MAP: Record<string, string[]> = {
+          origin: ["origin", "can_cities", "time_locations"],
+          avail: ["avail", "free_windows", "free_note"],
+          life: ["smoke", "alcohol", "weed"],
+          activities: ["activities", "hobbies"],
+        };
+        wrap.querySelectorAll("[data-pmvis]").forEach(btn => {
+          btn.onclick = () => {
+            const g = btn.dataset.pmvis;
+            const keys = VIS_MAP[g] || [];
+            p.public_fields = Array.isArray(p.public_fields) ? p.public_fields : ["origin","can_cities","free_windows","activities","hobbies"];
+            const isOn = keys.some(k => p.public_fields.includes(k));
+            if (isOn) {
+              p.public_fields = p.public_fields.filter((f: string) => !keys.includes(f));
+              toast("🔒 این بخش مخفی شد (فقط برای الگوریتم)");
+            } else {
+              p.public_fields = Array.from(new Set([...p.public_fields, ...keys])).filter((f: string) => f !== "private_challenges" && f !== "psych");
+              toast("👁️ این بخش عمومی شد");
+            }
+            store.set("dh_last", { name: p.name, email: p.email || "", data: p.data || {}, pub: p.public_fields, saved: true });
+            drawModal();
+          };
+        });
+        wrap.querySelectorAll("[data-pmsmoke]").forEach(el => {
+          el.onclick = () => {
+            const v = el.dataset.pmsmoke;
+            p.data.smoke = p.data.smoke === v ? "" : v;
+            drawModal();
+          };
+        });
+        wrap.querySelectorAll("[data-pmalc]").forEach(el => {
+          el.onclick = () => {
+            const v = el.dataset.pmalc;
+            p.data.alcohol = p.data.alcohol === v ? "" : v;
+            drawModal();
+          };
+        });
 
         wrap.querySelectorAll("[data-pchal]").forEach(el => {
           el.onclick = () => {
@@ -911,8 +1146,9 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         if (matchBtn) matchBtn.onclick = async () => {
           const resBox = wrap.querySelector("#hp_match_results");
           const chals = Array.isArray(p.data.private_challenges) ? p.data.private_challenges : [];
-          if (!chals.length) {
-            toast("حداقل یک گزینه از بخش محرمانه انتخاب کن");
+          const myPsych = (p.data.psych && typeof p.data.psych === "object") ? p.data.psych : {};
+          if (!chals.length && !Object.keys(myPsych).length) {
+            toast("حداقل یک گزینهٔ محرمانه انتخاب کن یا یک تست خودشناسی بده");
             return;
           }
           matchBtn.disabled = true;
@@ -930,6 +1166,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
                 hobbies: myHobbies,
                 smoke: p.data.smoke || "",
                 alcohol: p.data.alcohol || "",
+                psych: myPsych,
               }),
             });
             const j = await r.json();
@@ -944,6 +1181,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
                 <span class="tiny" style="color:var(--ok);font-weight:700">✨ ${fa(list.length)} هم‌مسیرِ امن و مشترک پیدا شد (فقط اشتراک‌های دوطرفه نمایش داده شده):</span>
                 ${list.map((m: any) => {
                   const cBadges = (m.shared_challenges || []).map((c: string) => `<span class="pill sm" style="background:#f3edff;color:var(--p)">${esc(PRIVATE_CHALLENGES[c] || c)}</span>`).join("");
+                  const psychBadge = m.psych_fit ? `<span class="pill sm" style="background:#eefbf6;color:#0e5f4d">🧩 هم‌خوانی شخصیتی بالا</span>` : "";
                   const cityBadges = (m.shared_cities || []).map((k: string) => `<span class="pill sm">📍 ${esc(cityByKey(k)?.fa || k)}</span>`).join("");
                   const hobbyBadges = (m.shared_hobbies || []).slice(0, 4).map((h: string) => `<span class="pill sm">✨ ${esc(h)}</span>`).join("");
                   return `<div style="background:#fff;border:1px solid #dfd7f3;border-radius:12px;padding:10px 12px">
@@ -951,7 +1189,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
                       <b style="font-size:14px">${esc(m.name)}</b>
                       <span class="tiny muted">هم‌مسیر امن</span>
                     </div>
-                    <div class="row" style="flex-wrap:wrap;gap:4px">${cBadges}${cityBadges}${hobbyBadges}</div>
+                    <div class="row" style="flex-wrap:wrap;gap:4px">${cBadges}${psychBadge}${cityBadges}${hobbyBadges}</div>
                   </div>`;
                 }).join("")}
               </div>`;
@@ -1071,9 +1309,61 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const cached = store.get("dh_last");
     const myName = USER?.name || cached?.name || "";
     const myEmail = cached?.email || cached?.data?.email || "";
+    const myProfData = (cached?.data && typeof cached.data === "object") ? cached.data : (PREFILL?.data || null);
+    const myPsychCount = myProfData?.psych ? Object.keys(myProfData.psych).filter(k => Boolean(myProfData.psych[k])).length : 0;
     const sharedProf = sharedUser ? KNOWN_PROFILES.find(p => p.name.toLowerCase() === sharedUser.trim().toLowerCase()) : null;
 
+    // Privacy-preserving compatibility ranking (sorts events by silent alignment with user's hidden profile & psych traits)
+    const matchByCode = new Map<string, { score: number; badge: string }>();
+    for (const m of mine) {
+      matchByCode.set(m.code, computeEventMatch(m, myProfData));
+    }
+    mine.sort((a, b) => (matchByCode.get(b.code)?.score || 0) - (matchByCode.get(a.code)?.score || 0));
+
+    const topEvents = mine.filter(m => !m.is_archived && !m.final?.archived && !isDateExpired(m.expires_at || m.final?.expires_at)).slice(0, 3);
+
     app.innerHTML = topbar() + `
+      ${topEvents.length ? `
+      <div class="card" id="home_live_feed" style="border:1.5px solid #e1daf7;background:linear-gradient(180deg,#fdfcff 0%,#ffffff 100%)">
+        <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px;gap:6px">
+          <b style="font-size:16px">🌿 قرارهای فعال دوستان ${myProfData ? '<span class="tiny" style="color:var(--p);font-weight:600">(مرتب‌شده با حال‌وهوای تو)</span>' : ''}</b>
+          <button type="button" class="btn ghost sm" id="feed_see_all">همه (${fa(mine.length)}) ←</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px">
+          ${topEvents.map(m => {
+            const icon = detectActivityIcon(m.title);
+            const locObj = m.location || m.final?.location;
+            // For guests browsing, show area/city safely (hide exact street address until they participate)
+            const safeLoc = locObj ? (locObj.mode === "exact" && !USER ? { ...locObj, mode: "area", place: "" } : locObj) : null;
+            const locSum = fmtLocation(safeLoc, true);
+            const rhySum = fmtRhythm(m.rhythm || m.final?.rhythm, true);
+            const mInfo = matchByCode.get(m.code);
+            return `<a class="meetup-item" style="margin:0;padding:10px 12px" href="/d/${esc(m.code)}${m.admin && m.admin !== "account" ? `?admin=${esc(m.admin)}` : ""}">
+              <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+                <div class="av-sm" style="background:${colorOf(m.organizer_name||'د')};width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px;flex:none">${icon}</div>
+                <div style="min-width:0">
+                  <div class="row" style="gap:5px;flex-wrap:wrap;align-items:center">
+                    <b style="font-size:14.5px">${esc(m.title || "قرار دورهمی")}</b>
+                    ${mInfo?.badge ? `<span class="pill sm" style="background:#eefbf6;color:#0e5f4d;font-weight:700">${esc(mInfo.badge)}</span>` : ""}
+                    ${rhySum ? `<span class="pill sm" style="background:#f3e8ff;color:#6b21a8">${esc(rhySum)}</span>` : ""}
+                    ${locSum ? `<span class="pill sm" style="background:#f3f0ff;color:var(--p)">${esc(locSum)}</span>` : ""}
+                  </div>
+                  <div class="tiny muted">👤 ${esc(m.organizer_name || "دوستان")} · 👥 ${m.count != null ? `${fa(m.count)} نفر` : "باز برای اعلام آمادگی"}</div>
+                </div>
+              </div>
+              <span class="pill" style="font-weight:700;flex:none">جزئیات ←</span>
+            </a>`;
+          }).join("")}
+        </div>
+        <div class="row" style="justify-content:space-between;align-items:center;padding:8px 10px;background:#f7f4ff;border-radius:12px;gap:8px;flex-wrap:wrap">
+          <span class="tiny" style="color:#4a3f66">🧩 <b>خودشناسی رایگان (مخفی):</b> ${myPsychCount ? `${fa(myPsychCount)} از ${fa(PSYCH_QUIZZES.length)} تست انجام شده — سیستم قرارهای هم‌فازت را بالاتر می‌آورد` : "با تست‌های ۴۵ ثانیه‌ای، سیستم بدون افشای رازت قرارها و هم‌مسیرهای بهتر را پیدا می‌کند"}</span>
+          <button type="button" class="btn ghost sm" id="home_open_psych">${myPsychCount ? "ادامهٔ تست‌ها 🧩" : "شروع تست رایگان 🧩"}</button>
+        </div>
+      </div>` : `
+      <div class="row" style="justify-content:space-between;align-items:center;padding:9px 12px;background:#f7f4ff;border:1px solid #e3dbf9;border-radius:14px;margin-bottom:10px;gap:8px;flex-wrap:wrap">
+        <span class="tiny" style="color:#4a3f66">🧩 <b>خودشناسی رایگان (۱۰۰٪ مخفی):</b> تست‌های کوتاه روانشناسی برای شناخت بهتر خودت و پیشنهاد هم‌مسیرهای امن</span>
+        <button type="button" class="btn ghost sm" id="home_open_psych">شروع تست رایگان 🧩</button>
+      </div>`}
       <div class="card">
         <h1 id="home_hero_h1">✨ یک دورهمی بساز یا قرار ثابت بگذار</h1>
         <p class="muted" id="home_hero_sub" style="margin-bottom:8px;font-size:13px">دوستی با «یه روز همو ببینیم» ساخته نمی‌شه — با ساعت مشترک و قرار ثابت (مثلاً سه‌شنبه‌ها پیاده‌روی) ساخته می‌شه 🌿</p>
@@ -1205,6 +1495,10 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             </div>
             <label class="f" style="margin-top:0;font-size:13px" id="c_loc_place_lbl">محله یا محدودهٔ دلخواه (اختیاری)</label>
             <input type="text" id="c_loc_place" maxlength="140" placeholder="مثلاً: اطراف ایستگاه مرکزی، نزدیک پارک، مرکز شهر…">
+            <label class="row tiny" style="gap:6px;margin-top:8px;cursor:pointer;color:var(--p);font-weight:600">
+              <input type="checkbox" id="c_loc_save_prof" checked style="width:auto;margin:0">
+              <span>💾 این شهر را در پروفایلم ذخیره کن (بعداً در پروفایل می‌توانی عمومی یا مخفی کنی)</span>
+            </label>
           </div>
 
           <div style="margin-bottom:14px">
@@ -1368,6 +1662,28 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     `;
     bindLoginLinks();
     if (sharedProf) openProfileModal(sharedProf);
+    const feedSeeAll = $("#feed_see_all");
+    if (feedSeeAll) feedSeeAll.onclick = () => {
+      switchHomeTab(true);
+      $("#find_pane")?.scrollIntoView({ behavior: "smooth" });
+    };
+    const homeOpenPsych = $("#home_open_psych");
+    if (homeOpenPsych) homeOpenPsych.onclick = () => openProfileModal(null, "psych");
+    const locCityEl = $("#c_loc_city");
+    if (locCityEl) locCityEl.addEventListener("change", () => {
+      const ck = locCityEl.value;
+      const saveChk = $("#c_loc_save_prof");
+      if (ck && saveChk && saveChk.checked) {
+        const cur = store.get("dh_last") || { name: myName || "مهمان", email: myEmail || "", data: {}, pub: ["origin","can_cities","free_windows","activities","hobbies"], saved: true };
+        cur.data = cur.data || {};
+        const arr = Array.isArray(cur.data.can_cities) ? cur.data.can_cities : [];
+        if (!arr.includes(ck)) {
+          cur.data.can_cities = [...arr, ck];
+          store.set("dh_last", cur);
+          toast(`📍 ${cityByKey(ck)?.fa || ck} به پروفایلت اضافه شد ✓`);
+        }
+      }
+    });
 
     const tabCreate = $("#mode_create_tab");
     const tabFind = $("#mode_find_tab") || $("#mode_join_tab");
@@ -1852,6 +2168,12 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         ${fmtLocation(M.final?.location) ? `<div class="okbox" style="margin:6px 0;background:#eefbf6;border-color:#b7ebd6;color:#0e5f4d">${esc(fmtLocation(M.final?.location))}</div>` : ""}
         ${fmtAudience(M.final?.audience, Boolean(M.women_only)).length ? `<div class="row" style="gap:6px;margin:6px 0 8px">${fmtAudience(M.final?.audience, Boolean(M.women_only)).map(b => `<span class="pill sm" style="background:#f3f0ff;color:var(--p)">${esc(b)}</span>`).join("")}</div>` : ""}
         ${M.note?`<div class="okbox" style="margin:8px 0;background:#f6f4fe;border-color:#d7cbfa">💬 <b>پیام ${esc(M.organizer_name || "برگزارکننده")}:</b> ${esc(M.note.replace(/^\[همراه دو‌نفره\]\s*/, ""))}</div>`:""}
+        ${(() => {
+          const mFit = computeEventMatch(M, D);
+          if (mFit.score < 0) return `<div class="okbox" style="margin:6px 0;background:#fff5f5;border-color:#ffd0d0;color:#b91c1c">🛡️ <b>یادآوری امن (فقط برای خودت):</b> یکی از ترجیح‌های سیگار/الکل این قرار ممکن است با مرزهای پروفایلت متفاوت باشد.</div>`;
+          if (mFit.badge) return `<div class="okbox" style="margin:6px 0;background:#eefbf6;border-color:#b7ebd6;color:#0e5f4d">${esc(mFit.badge)} <span class="tiny">(محاسبهٔ خصوصی بدون افشای اطلاعات)</span></div>`;
+          return "";
+        })()}
         <p class="muted">بگو چه روزها، چه ساعت‌هایی و تا چه محدوده‌ای روی نقشه می‌توانی بیایی تا بهترین زمان و مکان مشترک برای همه پیدا شود. ${M.women_only?"<b>این دورهمی فقط برای خانم‌هاست.</b>":""}</p>
         ${quick?`<div class="okbox">✨ جواب‌های دفعهٔ قبلت را گذاشتم: مبدأ (${esc(D.origin?.fa || "ثبت‌شده")})، وسیله، غذا، ترجیح‌ها و حریم خصوصی. فقط ساعت‌ها و محدوده‌ای که این بار می‌تونی رو بزن؛ در صفحهٔ آخر هر بخش را خواستی با یک ضربه عوض کن.</div>`
           : prefilled?`<div class="note">✨ چند جواب را از پروفایل «همراه»ت پر کردم. هر کدام را خواستی عوض کن.</div>`:""}
@@ -1897,7 +2219,11 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             </div>
           </div>
         </details>
-        ${visT("origin","شهرهای انتخابی‌ام را با اسمم به بقیه نشان بده")}`,
+        ${visT("origin","شهرهای انتخابی‌ام را با اسمم به بقیه نشان بده")}
+        <label class="row tiny" style="gap:6px;margin-top:6px;cursor:pointer;color:var(--p);font-weight:600">
+          <input type="checkbox" id="f_save_orig_prof" checked style="width:auto;margin:0">
+          <span>💾 این شهرها در پروفایلم ذخیره بمانند (هر وقت خواستی می‌توانی عمومی یا مخفی کنی)</span>
+        </label>`,
         after: () => {
           clearAuxMaps();
           const helpers = wireLocationAndTimeControls(root, D, "f_orig", "f_orig_map");
@@ -2088,7 +2414,11 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         ${tri("smoke", SMOKE_L, ["😷","🤷‍♀️","🚬"])}
         <label class="f">ماری‌جوانا / کافی‌شاپ</label>
         ${tri("weed", WEED_L, ["🙅‍♀️","🤷‍♀️","🌿"])}
-        ${visT("life","این سه جواب را با اسمم به بقیه نشان بده")}`,
+        ${visT("life","این سه جواب را با اسمم به بقیه نشان بده")}
+        <label class="row tiny" style="gap:6px;margin-top:6px;cursor:pointer;color:var(--p);font-weight:600">
+          <input type="checkbox" id="f_save_life_prof" checked style="width:auto;margin:0">
+          <span>💾 مرزهایم در پروفایلم ذخیره بمانند (به‌صورت پیش‌فرض مخفی برای الگوریتم هم‌خوانی)</span>
+        </label>`,
         after: () => { ["alcohol","smoke","weed"].forEach(k => oneOf(`[data-${k}]`, v => D[k] = v, ".opt")); }},
       {k:"more", t:"چیزهای دیگر", draw: () => `
         <h2>🧡 چند چیز دیگر</h2>
@@ -2292,7 +2622,11 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const isArchived = Boolean(M.is_archived || M.final?.archived);
     const expDate = M.expires_at || M.final?.expires_at;
     const isExpired = Boolean(M.is_expired || isDateExpired(expDate));
-    const locLine = fmtLocation(M.final?.location);
+    const locObj = M.final?.location;
+    const hideExactForGuest = !USER && !my.edit && !ADMIN && locObj?.mode === "exact";
+    const locLine = hideExactForGuest
+      ? `🏠 مکان مشخص‌شده: پس از اعلام آمادگی یا ورود نمایش داده می‌شود (حفظ حریم خصوصی)`
+      : fmtLocation(locObj);
     const rhyLine = fmtRhythm(M.final?.rhythm);
     const audBadges = fmtAudience(M.final?.audience, Boolean(M.women_only));
     app.innerHTML = topbar() + `
@@ -2545,6 +2879,22 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   /* ============ people ============ */
   function peopleTab(){
     if (!M.people.length) return `<div class="card center"><p class="muted">هنوز کسی نیست.</p></div>`;
+    const my = store.get("dh_"+CODE) || {};
+    const limitedGuestView = !USER && !my.edit && !ADMIN;
+    if (limitedGuestView) {
+      return `
+        <div class="card" style="background:#f8f6ff;border:1.5px solid #e1daf7">
+          <b style="font-size:14.5px;display:block;margin-bottom:6px">🔒 حفظ حریم خصوصی شرکت‌کنندگان</b>
+          <p class="tiny muted" style="margin:0 0 10px;line-height:1.65">
+            تا الان <b>${fa(M.people.length)} نفر</b> برای این قرار اعلام آمادگی کرده‌اند (${M.people.map(p => esc(p.name)).slice(0, 6).join("، ")}${M.people.length > 6 ? " و…" : ""}).
+            برای دیدن جزئیات بیشترِ دوستان (چیزهایی که خودشان عمومی گذاشته‌اند)، اول اعلام آمادگی کن یا وارد حسابت شو.
+          </p>
+          <div class="row" style="gap:8px;flex-wrap:wrap">
+            <a class="btn sm" href="/d/${CODE}?form=1">📝 اعلام آمادگی و سنجش هم‌خوانی</a>
+            <a class="btn line sm" href="/login?next=${encodeURIComponent(location.pathname + location.search)}" data-ext="1" data-login="1">🔐 ورود به همراه</a>
+          </div>
+        </div>`;
+    }
     const ORDER = ["about","age","job","origin","can_cities","free_windows","free_note","modes","seats","max_min","hobbies","activities","langs","bring","diet","dislikes","allergy","alcohol","smoke","weed","photo","quiet","access","until","night_alone","contact","question"];
     return M.people.map(p => {
       const kp = KNOWN_PROFILES.find(x => x.name.toLowerCase() === (p.name||"").toLowerCase());
