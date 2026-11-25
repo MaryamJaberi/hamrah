@@ -142,7 +142,9 @@ export async function GET(req: Request) {
     const cleanName = String(r.name ?? '').trim();
     if (!cleanName || IGNORE_NAMES.has(cleanName) || /^تست\b/i.test(cleanName)) continue;
     const key = cleanName.toLowerCase();
-    const rData = (r.data && typeof r.data === 'object' ? r.data : {}) as Record<string, any>;
+    const rDataRaw = (r.data && typeof r.data === 'object' ? r.data : {}) as Record<string, any>;
+    // Never expose double-blind private_challenges in public profile responses
+    const { private_challenges: _hidden, ...rData } = rDataRaw;
     const emailKey = typeof rData.email === 'string' && rData.email.includes('@') ? rData.email.trim().toLowerCase() : null;
     const prev = byName.get(key) || (emailKey ? byName.get(emailKey) : undefined);
     const m = meetupById.get(r.meetup_id);

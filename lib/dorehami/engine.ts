@@ -106,6 +106,15 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     en_practice: "🇬🇧 تمرین انگلیسی باهم",
     fa: "🇮🇷 هم‌زبان فارسی",
   };
+  const PRIVATE_CHALLENGES: Record<string, string> = {
+    weight_journey: "⚖️ مسیر کاهش وزن / ورزش بدون قضاوت",
+    adhd: "🧠 ADHD / سختی تمرکز و شروع کارها",
+    social_anxiety: "🫧 اضطراب اجتماعی / جمع‌های کوچک",
+    new_in_town: "🌱 تازه‌وارد / تنهایی مهاجرت",
+    hard_season: "💔 عبور از دورهٔ سخت",
+    habit_reset: "🚭 ترک عادت / شروع سالم",
+    low_energy: "😴 کم‌انرژی / همراه آرام",
+  };
   const fmtAudience = (aud, womenOnly = false) => {
     const badges: string[] = [];
     if (aud?.visibility === "private") badges.push("🔒 فقط با لینک خصوصی");
@@ -755,6 +764,27 @@ export function mount(root: HTMLElement, opts: DhOptions) {
                 ${renderWeekGrid(d.free_windows || [], "hpwin")}
               </div>
 
+              <div style="margin-top:14px;padding:12px 14px;border-radius:14px;background:linear-gradient(135deg,#f8f5ff 0%,#eef7f6 100%);border:1.5px solid #d9d0f2">
+                <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:4px">
+                  <b style="font-size:13.5px;color:var(--p)">🔒 بخش محرمانه (فقط بین تو و سیستم)</b>
+                  <span class="pill sm" style="background:#fff;color:var(--p)">کاملاً پنهان</span>
+                </div>
+                <p class="tiny muted" style="margin:0 0 8px;line-height:1.6">
+                  هیچ‌کس دیگر این گزینه‌ها را نمی‌بیند. فقط اگر نفر دیگری دقیقاً همین مسیر را انتخاب کرده باشد و شهر یا محدودیت‌هایتان بهم بخورد، سیستم هر دویتان را به هم معرفی می‌کند:
+                </p>
+                <div class="chips" id="hp_pchal_chips" style="margin:4px 0 8px">
+                  ${Object.entries(PRIVATE_CHALLENGES).map(([k, lbl]) => {
+                    const on = Array.isArray(d.private_challenges) && d.private_challenges.includes(k);
+                    return `<div class="chip${on ? " on" : ""}" data-pchal="${k}">${lbl}</div>`;
+                  }).join("")}
+                </div>
+                <div class="row" style="gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px">
+                  <button type="button" class="btn ghost sm" id="hp_match_btn">✨ پیدا کردن هم‌مسیرِ امن نزدیک من</button>
+                  <span class="tiny muted" id="hp_match_hint">معرفی فقط در صورت اشتراک دوطرفه</span>
+                </div>
+                <div id="hp_match_results" style="margin-top:8px"></div>
+              </div>
+
               <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:6px">
                 <button class="btn grow" id="hp_save">💾 ذخیرهٔ دائمی پروفایل من</button>
                 <button class="btn ghost sm" id="hp_share">🔗 اشتراک‌گذاری</button>
@@ -848,23 +878,88 @@ export function mount(root: HTMLElement, opts: DhOptions) {
 
         const saveBtn = wrap.querySelector("#hp_save");
         if (saveBtn) saveBtn.onclick = async () => {
-          const em = wrap.querySelector("#pm_email").value.trim().toLowerCase();
-          const nm = wrap.querySelector("#pm_name").value.trim() || p.name;
+          const em = (wrap.querySelector("#pm_email")?.value || "").trim().toLowerCase();
+          const nm = (wrap.querySelector("#pm_name")?.value || "").trim() || p.name;
           p.name = nm;
           if (em) { p.email = em; p.data.email = em; }
+          const safePub = (p.public_fields || ["origin","can_cities","free_windows","activities","hobbies","email"]).filter((f: string) => f !== "private_challenges");
           saveBtn.disabled = true;
           try {
             await fetch("/api/d/profiles", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ name: p.name, email: p.email || null, data: p.data, public_fields: p.public_fields || ["origin","can_cities","free_windows","activities","hobbies","email"] })
+              body: JSON.stringify({ name: p.name, email: p.email || null, data: p.data, public_fields: safePub })
             });
-            store.set("dh_last", { name: p.name, email: p.email || "", data: p.data || {}, pub: p.public_fields || [], saved: true });
+            store.set("dh_last", { name: p.name, email: p.email || "", data: p.data || {}, pub: safePub, saved: true });
             const tb = $("#tb_prof_btn"); if (tb) tb.textContent = `👤 پروفایل ${p.name}${p.email?" ✓":""}`;
             if ($("#c_org") && !$("#c_org").value) $("#c_org").value = p.name;
             toast("پروفایل و محدودهٔ حرکتت ذخیره شد ✓");
           } catch(e) { toast("ذخیره نشد"); }
           saveBtn.disabled = false;
+        };
+
+        wrap.querySelectorAll("[data-pchal]").forEach(el => {
+          el.onclick = () => {
+            const k = el.dataset.pchal;
+            const arr = Array.isArray(p.data.private_challenges) ? p.data.private_challenges : [];
+            p.data.private_challenges = arr.includes(k) ? arr.filter((x: string) => x !== k) : [...arr, k];
+            el.classList.toggle("on", p.data.private_challenges.includes(k));
+          };
+        });
+
+        const matchBtn = wrap.querySelector("#hp_match_btn");
+        if (matchBtn) matchBtn.onclick = async () => {
+          const resBox = wrap.querySelector("#hp_match_results");
+          const chals = Array.isArray(p.data.private_challenges) ? p.data.private_challenges : [];
+          if (!chals.length) {
+            toast("حداقل یک گزینه از بخش محرمانه انتخاب کن");
+            return;
+          }
+          matchBtn.disabled = true;
+          if (resBox) resBox.innerHTML = `<p class="tiny muted">در حال بررسی امن و دوطرفه...</p>`;
+          try {
+            const myCities = [...(p.data.can_cities || []), ...(p.data.origin?.key ? [p.data.origin.key] : [])];
+            const myHobbies = [...(p.data.hobbies || []), ...(p.data.activities || [])];
+            const r = await fetch("/api/d/mutual-match", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: p.name,
+                challenges: chals,
+                cities: myCities,
+                hobbies: myHobbies,
+                smoke: p.data.smoke || "",
+                alcohol: p.data.alcohol || "",
+              }),
+            });
+            const j = await r.json();
+            const list = Array.isArray(j.matches) ? j.matches : [];
+            if (!resBox) return;
+            if (!list.length) {
+              resBox.innerHTML = `<div style="background:#fff;border:1px solid #e2daf5;border-radius:10px;padding:10px;font-size:12.5px;line-height:1.65;color:#4a3f66">
+                🌱 هنوز هم‌مسیرِ مشترکی پیدا نشد — دکمهٔ <b>ذخیرهٔ دائمی پروفایل</b> را بزن تا به محض اینکه نفر دیگری با همین مسیر و محدودیت‌های سازگار اضافه شد، به هم معرفی شوید.
+              </div>`;
+            } else {
+              resBox.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">
+                <span class="tiny" style="color:var(--ok);font-weight:700">✨ ${fa(list.length)} هم‌مسیرِ امن و مشترک پیدا شد (فقط اشتراک‌های دوطرفه نمایش داده شده):</span>
+                ${list.map((m: any) => {
+                  const cBadges = (m.shared_challenges || []).map((c: string) => `<span class="pill sm" style="background:#f3edff;color:var(--p)">${esc(PRIVATE_CHALLENGES[c] || c)}</span>`).join("");
+                  const cityBadges = (m.shared_cities || []).map((k: string) => `<span class="pill sm">📍 ${esc(cityByKey(k)?.fa || k)}</span>`).join("");
+                  const hobbyBadges = (m.shared_hobbies || []).slice(0, 4).map((h: string) => `<span class="pill sm">✨ ${esc(h)}</span>`).join("");
+                  return `<div style="background:#fff;border:1px solid #dfd7f3;border-radius:12px;padding:10px 12px">
+                    <div class="row" style="justify-content:space-between;margin-bottom:4px">
+                      <b style="font-size:14px">${esc(m.name)}</b>
+                      <span class="tiny muted">هم‌مسیر امن</span>
+                    </div>
+                    <div class="row" style="flex-wrap:wrap;gap:4px">${cBadges}${cityBadges}${hobbyBadges}</div>
+                  </div>`;
+                }).join("")}
+              </div>`;
+            }
+          } catch (e) {
+            if (resBox) resBox.innerHTML = `<p class="tiny" style="color:var(--err)">خطا در جستجوی هم‌مسیر. دوباره امتحان کن.</p>`;
+          }
+          matchBtn.disabled = false;
         };
         const shareBtn = wrap.querySelector("#hp_share");
         if (shareBtn) shareBtn.onclick = async () => {
