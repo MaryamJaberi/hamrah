@@ -53,7 +53,7 @@ async function fetchFallbackRpcProfiles() {
   ingest(m1, true);
   const uniqueProfiles = Array.from(new Set(byName.values()));
   const recentMeetups = m1
-    ? [{ code: m1.code, title: m1.title, organizer_name: m1.organizer_name, count: m1.count ?? (m1.people?.length || 0), final: m1.final, location: m1.final?.location || null, audience: m1.final?.audience || null, expires_at: null, is_archived: false, created_at: m1.created_at }]
+    ? [{ code: m1.code, title: m1.title, organizer_name: m1.organizer_name, count: m1.count ?? (m1.people?.length || 0), final: m1.final, location: m1.final?.location || null, audience: m1.final?.audience || null, rhythm: m1.final?.rhythm || null, expires_at: null, is_archived: false, created_at: m1.created_at }]
     : [];
   return { profiles: uniqueProfiles, recentMeetups };
 }
@@ -206,6 +206,7 @@ export async function GET(req: Request) {
       final: m.final,
       location: m.final?.location || null,
       audience: m.final?.audience || null,
+      rhythm: m.final?.rhythm || null,
       expires_at: m.expires_at || m.final?.expires_at || null,
       is_archived: Boolean(m.is_archived || m.final?.archived),
       created_at: m.created_at,

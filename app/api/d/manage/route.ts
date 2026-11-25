@@ -116,9 +116,26 @@ export async function POST(req: Request) {
         }
       }
 
-      const newFinal: Record<string, any> = { ...currentFinal, expires_at, location, audience };
+      let rhythm: Record<string, any> | null = currentFinal.rhythm ?? null;
+      if (body.rhythm !== undefined) {
+        if (body.rhythm && typeof body.rhythm === 'object' && ['weekly', 'biweekly', 'once'].includes(body.rhythm.freq)) {
+          const freq = body.rhythm.freq;
+          if (freq === 'once') {
+            rhythm = null;
+          } else {
+            const day = typeof body.rhythm.day === 'string' ? body.rhythm.day.trim().slice(0, 16) : 'any';
+            const slot = typeof body.rhythm.slot === 'string' ? body.rhythm.slot.trim().slice(0, 16) : 'any';
+            rhythm = { freq, day, slot };
+          }
+        } else {
+          rhythm = null;
+        }
+      }
+
+      const newFinal: Record<string, any> = { ...currentFinal, expires_at, location, audience, rhythm };
       if (!location) delete newFinal.location;
       if (!audience) delete newFinal.audience;
+      if (!rhythm) delete newFinal.rhythm;
       const updates: Record<string, any> = {
         title,
         note,
@@ -145,6 +162,7 @@ export async function POST(req: Request) {
         expires_at,
         location,
         audience,
+        rhythm,
         is_archived: Boolean(m.is_archived || currentFinal.archived),
       });
     }
