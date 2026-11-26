@@ -309,21 +309,21 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const curKm = Math.round(curMin * 0.75);
     return `
       <div class="city-add-bar">
-        <select id="${prefix}_add_sel" style="flex:1;min-width:155px">
-          <option value="">+ افزودن شهر دیگر روی نقشه…</option>
+        <select id="${prefix}_add_sel" style="flex:1;min-width:140px">
+          <option value="">+ افزودن شهر…</option>
           ${CITIES.map(c => `<option value="${c.key}">${esc(c.fa)} (${esc(c.nl)})</option>`).join("")}
         </select>
-        <button type="button" class="btn ghost sm" id="${prefix}_add_btn">+ افزودن شهر</button>
+        <button type="button" class="btn ghost sm" id="${prefix}_add_btn">+ افزودن</button>
         <label style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;background:#f4f2fc;padding:7px 10px;border-radius:11px;cursor:pointer;user-select:none">
           <input type="checkbox" id="${prefix}_rad_chk" ${useRad?"checked":""} style="width:auto;margin:0;accent-color:var(--p)">
-          <span>⭕ نمایش دایرهٔ شعاع</span>
+          <span>⭕ دایرهٔ شعاع</span>
         </label>
       </div>
       <div id="${prefix}_sel_tags" class="chips" style="margin:6px 0"></div>
       <div class="rad-ctrl" id="${prefix}_rad_box" style="display:${useRad?"flex":"none"}">
-        <span class="tiny" style="white-space:nowrap">⭕ شعاع دایرهٔ حرکت:</span>
+        <span class="tiny" style="white-space:nowrap">⭕ شعاع حرکت:</span>
+        <span class="rad-val" id="${prefix}_rad_lbl">${fa(curMin)} دقیقه (~${fa(curKm)} کیلومتر)</span>
         <input type="range" id="${prefix}_rad" min="10" max="120" step="5" value="${curMin}">
-        <span class="rad-val" id="${prefix}_rad_lbl">${fa(curMin)} دقیقه (~${fa(curKm)} کم)</span>
       </div>`;
   }
 
@@ -695,31 +695,35 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     let activeQuizKey: string | null = null;
     let quizAnswers: string[] = [];
 
+    const DEFAULT_PUB = ["origin", "can_cities", "free_windows", "activities", "hobbies"];
     const ensureProfileObj = () => {
       if (!p) {
         p = {
-          name: USER?.name || cached?.name || "مهمان",
+          name: USER?.name || cached?.name || "",
           email: cached?.email || "",
           data: { ...(cached?.data || {}), free_windows: cached?.data?.free_windows || [], can_cities: cached?.data?.can_cities || [], max_min: 45 },
-          public_fields: cached?.pub || ["origin", "can_cities", "free_windows", "activities", "hobbies"],
+          public_fields: Array.isArray(cached?.pub) ? [...cached.pub] : [...DEFAULT_PUB],
         };
       }
       p.data = p.data || {};
-      p.public_fields = Array.isArray(p.public_fields) ? p.public_fields : ["origin", "can_cities", "free_windows", "activities", "hobbies"];
+      if (!Array.isArray(p.public_fields)) p.public_fields = [...DEFAULT_PUB];
       return p;
     };
 
     const isPubGroup = (keys: string[]) => {
-      const pf = Array.isArray(p?.public_fields) ? p.public_fields : ["origin", "can_cities", "free_windows", "activities", "hobbies"];
+      const pf = Array.isArray(p?.public_fields) ? p.public_fields : DEFAULT_PUB;
       return keys.some(k => pf.includes(k));
     };
 
     const renderVisPill = (groupKey: string, keys: string[]) => {
       const on = isPubGroup(keys);
-      return `<button type="button" class="pill sm" data-pmvis="${groupKey}" style="cursor:pointer;border:1px solid ${on ? "#b7ebd6" : "#d9d0f2"};background:${on ? "#eefbf6" : "#f5f1ff"};color:${on ? "#0e5f4d" : "var(--p)"};font-weight:700">${on ? "👁️ عمومی (قابل دیدن)" : "🔒 مخفی (فقط الگوریتم)"}</button>`;
+      return `<button type="button" class="pill sm" data-pmvis="${groupKey}" style="cursor:pointer;border:1px solid ${on ? "#b7ebd6" : "#d9d0f2"};background:${on ? "#eefbf6" : "#f5f1ff"};color:${on ? "#0e5f4d" : "var(--p-ink)"};font-weight:700">${on ? "👁️ بقیه ببینن" : "🔒 فقط برای خودم"}</button>`;
     };
 
+    let dirtyForHost = false;
+
     const drawModal = () => {
+      clearAuxMaps();
       const d = (p && p.data) ? p.data : (cached?.data || {});
       const psych = (d.psych && typeof d.psych === "object") ? d.psych : {};
       const psychCount = Object.keys(psych).filter(k => Boolean(psych[k])).length;
@@ -917,10 +921,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
                 <div id="hp_match_results" style="margin-top:8px"></div>
               </div>
 
-              <div class="row" style="margin-top:12px;flex-wrap:wrap;gap:6px">
-                <button class="btn grow" id="hp_save">💾 ذخیرهٔ دائمی پروفایل من</button>
-                <button class="btn ghost sm" id="hp_share">🔗 اشتراک‌گذاری</button>
-                <a class="btn line sm" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(shareTxt)}">واتس‌اپ</a>
+              <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+                <button class="btn block" id="hp_save">💾 ذخیرهٔ پروفایل من</button>
+                <div class="row" style="gap:6px">
+                  <button class="btn ghost sm grow" id="hp_share">🔗 کپی لینک</button>
+                  <a class="btn wa sm grow" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(shareTxt)}">واتس‌اپ</a>
+                  <a class="btn ghost sm grow" style="background:#e8f4fd;color:#0077b5" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(`زمان‌ها و شهرهای آزاد ${p.name} در همراه 🌿`)}">تلگرام</a>
+                </div>
               </div>
             </div>
           ` : `
@@ -932,8 +939,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           `}
         </div>`;
 
-      wrap.querySelector("#pm_close").onclick = () => { clearAuxMaps(); wrap.remove(); };
-      wrap.onclick = (ev) => { if (ev.target === wrap) { clearAuxMaps(); wrap.remove(); } };
+      const closeAndSync = () => {
+        clearAuxMaps();
+        wrap.remove();
+        if (dirtyForHost && location.pathname === "/d") homePage();
+      };
+      wrap.querySelector("#pm_close").onclick = closeAndSync;
+      wrap.onclick = (ev) => { if (ev.target === wrap) closeAndSync(); };
       const tabProf = wrap.querySelector("#pm_tab_prof");
       const tabPsych = wrap.querySelector("#pm_tab_psych");
       if (tabProf) tabProf.onclick = () => { activeTab = "profile"; activeQuizKey = null; drawModal(); };
@@ -981,7 +993,8 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               }).catch(() => {});
             }
             activeQuizKey = null;
-            toast("نتیجه به صورت مخفی در پروفایلت ذخیره شد 🔒✓");
+            dirtyForHost = true;
+            toast("نتیجه به صورت خصوصی ذخیره شد 🔒✓");
             drawModal();
           };
         }
@@ -989,7 +1002,12 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         if (pqApply) pqApply.onclick = () => {
           clearAuxMaps();
           wrap.remove();
-          if (location.pathname === "/d") homePage();
+          if (location.pathname === "/d") {
+            homePage().then(() => {
+              if ($("#home_live_feed")) $("#home_live_feed").scrollIntoView({ behavior: "smooth" });
+              else if ($("#mode_find_tab")) $("#mode_find_tab").click();
+            });
+          }
         };
         return;
       }
@@ -1105,15 +1123,16 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           btn.onclick = () => {
             const g = btn.dataset.pmvis;
             const keys = VIS_MAP[g] || [];
-            p.public_fields = Array.isArray(p.public_fields) ? p.public_fields : ["origin","can_cities","free_windows","activities","hobbies"];
+            if (!Array.isArray(p.public_fields)) p.public_fields = [...DEFAULT_PUB];
             const isOn = keys.some(k => p.public_fields.includes(k));
             if (isOn) {
               p.public_fields = p.public_fields.filter((f: string) => !keys.includes(f));
-              toast("🔒 این بخش مخفی شد (فقط برای الگوریتم)");
+              toast("🔒 خصوصی شد — بقیه نمی‌بینن");
             } else {
               p.public_fields = Array.from(new Set([...p.public_fields, ...keys])).filter((f: string) => f !== "private_challenges" && f !== "psych");
-              toast("👁️ این بخش عمومی شد");
+              toast("👁️ الان برای بقیه قابل دیدنه");
             }
+            dirtyForHost = true;
             store.set("dh_last", { name: p.name, email: p.email || "", data: p.data || {}, pub: p.public_fields, saved: true });
             drawModal();
           };
@@ -1366,29 +1385,17 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       </div>`}
       <div class="card">
         <h1 id="home_hero_h1">✨ یک دورهمی بساز یا قرار ثابت بگذار</h1>
-        <p class="muted" id="home_hero_sub" style="margin-bottom:8px;font-size:13px">دوستی با «یه روز همو ببینیم» ساخته نمی‌شه — با ساعت مشترک و قرار ثابت (مثلاً سه‌شنبه‌ها پیاده‌روی) ساخته می‌شه 🌿</p>
-        <details style="margin-bottom:12px;background:#f8f6ff;border:1px solid #e6dff9;border-radius:12px;padding:7px 11px">
-          <summary class="tiny" style="cursor:pointer;color:var(--p);font-weight:700;list-style:none;display:flex;align-items:center;justify-content:space-between">
-            <span>⏳ چرا قرار ثابت؟ (قانون ۲۰۰ ساعت دوستی)</span>
-            <span style="opacity:.7">▼</span>
-          </summary>
-          <p class="tiny" style="margin:6px 0 0;line-height:1.7;color:var(--ink)">
-            پژوهش‌ها نشان می‌دهد از آشنایی تا دوستی واقعی زمان مشترک لازم است: <b>۵۰ ساعت</b> تا دوست معمولی، <b>۹۰ ساعت</b> تا دوست، و <b>۲۰۰ ساعت</b> تا دوست صمیمی. سالی دو بار قهوه ۵۰ سال طول می‌کشد؛ اما یک <b>قرار ۲ ساعتهٔ هفتگی</b> در ۶ ماه می‌شود بیش از <b>۵۰ ساعت</b>!
-          </p>
-        </details>
+        <p class="muted" id="home_hero_sub" style="margin-bottom:10px;font-size:13.5px">دوستی با «یه روزی همو ببینیم» شکل نمی‌گیره؛ با یه قرارِ تکرارشونده‌ی ساده ساخته می‌شه 🌿</p>
 
-        <div class="seg" style="margin-bottom:14px">
+        <div class="seg" style="margin-bottom:12px">
           <button type="button" id="mode_create_tab" class="on">✨ ساخت قرار</button>
-          <button type="button" id="mode_find_tab">🔍 پیدا کردن قرار ${mine.length ? `<span class="badge" style="background:#e8e2fa;color:var(--p);padding:1px 7px;border-radius:10px;font-size:11.5px;margin-right:4px">${fa(mine.length)}</span>` : ""}</button>
+          <button type="button" id="mode_find_tab">🔍 پیدا کردن قرار ${topEvents.length ? `<span class="badge" style="background:#e8e2fa;color:var(--p-ink);padding:1px 7px;border-radius:10px;font-size:11.5px;margin-right:4px">${fa(topEvents.length)}</span>` : ""}</button>
         </div>
 
         <div id="create_pane">
-          <div style="margin-bottom:14px">
+          <div style="margin-bottom:12px">
             <label class="f" style="margin-top:2px;font-weight:700">موضوع یا ایدهٔ قرار چیه؟</label>
-            <input type="text" id="c_title" list="c_idea_datalist" maxlength="80" placeholder="مثلاً: سه‌شنبه‌ها پیاده‌روی، کافه و گپ، دویدن صبحگاهی…" style="font-size:15px;padding:10px 12px">
-            <datalist id="c_idea_datalist">
-              ${EVENT_IDEAS.map(idea => `<option value="${esc(idea.title)}">${esc(idea.label)}</option>`).join("")}
-            </datalist>
+            <input type="text" id="c_title" maxlength="80" placeholder="مثلاً: پیاده‌روی سه‌شنبه‌ها، کافه و گپ…" style="font-size:15px;padding:10px 12px">
             <div class="quick-ideas" id="c_idea_chips">
               ${EVENT_IDEAS.map(idea => `
                 <span class="qidea" data-idea="${idea.k}">${idea.icon} ${esc(idea.label)}</span>
@@ -1396,19 +1403,18 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             </div>
           </div>
 
-          <div style="margin-bottom:14px">
-            <label class="f" style="margin-top:0">🔄 تکرار قرار (راز دوستی واقعی)</label>
+          <div style="margin-bottom:12px">
+            <label class="f" style="margin-top:0">🔄 چند وقت یک‌بار؟</label>
             <div class="seg sm" style="margin:0">
               <button type="button" id="rhy_weekly" class="on" style="white-space:nowrap">🔄 هر هفته</button>
               <button type="button" id="rhy_biweekly" style="white-space:nowrap">🔁 دوهفته‌ای</button>
               <button type="button" id="rhy_once" style="white-space:nowrap">1️⃣ یک‌باره</button>
             </div>
-            <div id="c_rhy_box" style="margin-top:8px;padding:10px 12px;background:#f8f7fc;border:1px solid #e7e2f5;border-radius:12px">
+            <div id="c_rhy_box" style="margin-top:8px">
               <div class="row" style="gap:8px;flex-wrap:wrap">
                 <div style="flex:1;min-width:130px">
-                  <label class="f" style="margin-top:0;font-size:12.5px">روز ثابت پیشنهادی</label>
-                  <select id="c_rhy_day" style="height:42px">
-                    <option value="any">با جمع هماهنگ</option>
+                  <select id="c_rhy_day" aria-label="روز ثابت پیشنهادی">
+                    <option value="any">روز: با جمع</option>
                     <option value="sat">شنبه‌ها</option>
                     <option value="sun">یکشنبه‌ها</option>
                     <option value="mon">دوشنبه‌ها</option>
@@ -1419,41 +1425,26 @@ export function mount(root: HTMLElement, opts: DhOptions) {
                   </select>
                 </div>
                 <div style="flex:1;min-width:130px">
-                  <label class="f" style="margin-top:0;font-size:12.5px">بازهٔ زمانی</label>
-                  <select id="c_rhy_slot" style="height:42px">
-                    <option value="any">هر ساعتی</option>
+                  <select id="c_rhy_slot" aria-label="بازهٔ زمانی">
+                    <option value="any">ساعت: آزاد</option>
                     <option value="morning">🌅 صبح‌ها</option>
                     <option value="afternoon">☀️ عصرها</option>
                     <option value="evening">🌙 شب‌ها</option>
                   </select>
                 </div>
               </div>
-              <div class="tiny" id="c_rhy_hint" style="color:var(--p);font-weight:600;margin-top:6px">
-                ⏳ ۲ ساعت هر هفته ≈ ۵۲ ساعت در ۶ ماه (آشنا ← دوست واقعی!)
-              </div>
             </div>
           </div>
 
-          <div style="margin-bottom:14px">
-            <label class="f" style="margin-top:0">تعداد هم‌پایان</label>
-            <div class="seg sm" style="margin:0;height:40px;display:flex;align-items:center">
-              <button type="button" id="c_tgt_group" class="on" style="height:32px;display:flex;align-items:center;justify-content:center;white-space:nowrap">👥 گروهی</button>
-              <button type="button" id="c_tgt_pair" style="height:32px;display:flex;align-items:center;justify-content:center;white-space:nowrap">👯‍♀️ دونفره (۱ به ۱)</button>
-            </div>
-          </div>
-
-          <div style="margin-bottom:14px">
-            <label class="f" style="margin-top:0">زمان‌بندی دورهمی</label>
+          <div style="margin-bottom:12px">
+            <label class="f" style="margin-top:0">📅 زمان‌بندی</label>
             <div class="seg sm" style="margin:0">
               <button type="button" id="seg_open" class="on" style="white-space:nowrap">🙋‍♀️ زمان شناور</button>
               <button type="button" id="seg_fixed" style="white-space:nowrap">📅 تاریخ مشخص</button>
             </div>
-            <div class="tiny" style="color:var(--muted);margin-top:4px" id="c_timing_hint">
-              دوستان ساعت‌های آزادشان را می‌گویند تا سیستم بهترین زمان مشترک را پیدا کند.
-            </div>
           </div>
 
-          <div id="c_fixed_box" style="display:none;margin-bottom:14px;padding:12px;background:#f8f7fc;border:1px solid #e7e2f5;border-radius:14px">
+          <div id="c_fixed_box" style="display:none;margin-bottom:12px;padding:12px;background:#f8f7fc;border:1px solid #e7e2f5;border-radius:14px">
             <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
               <b style="font-size:13px">📅 تاریخ و ساعت‌های انتخابی:</b>
               <span class="tiny">می‌توانی چند گزینه بدهی</span>
@@ -1462,19 +1453,16 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             <button class="btn ghost sm" id="c_add" style="margin-top:4px">+ یک تاریخ دیگر</button>
           </div>
 
-          <div style="margin-bottom:14px">
-            <label class="f" style="margin-top:0">📍 مکان یا محدودهٔ پیشنهادی</label>
+          <div style="margin-bottom:12px">
+            <label class="f" style="margin-top:0">📍 مکان یا محدوده</label>
             <div class="seg sm" style="margin:0">
-              <button type="button" id="loc_flex" class="on" style="white-space:nowrap">🗺️ پیشنهاد جمع</button>
+              <button type="button" id="loc_flex" class="on" style="white-space:nowrap">🗺️ با جمع</button>
               <button type="button" id="loc_area" style="white-space:nowrap">📍 شهر/محدوده</button>
-              <button type="button" id="loc_exact" style="white-space:nowrap">🏠 مکان مشخص</button>
-            </div>
-            <div class="tiny" style="color:var(--muted);margin-top:4px" id="c_loc_hint">
-              هر کس شهرش را می‌گوید تا منصفانه‌ترین مکان وسط برای همه پیدا شود.
+              <button type="button" id="loc_exact" style="white-space:nowrap">🏠 مکان دقیق</button>
             </div>
           </div>
 
-          <div id="c_loc_box" style="display:none;margin-bottom:14px;padding:12px;background:#f8f7fc;border:1px solid #e7e2f5;border-radius:14px">
+          <div id="c_loc_box" style="display:none;margin-bottom:12px;padding:12px;background:#f8f7fc;border:1px solid #e7e2f5;border-radius:14px">
             <div class="row" style="gap:8px;margin-bottom:8px;flex-wrap:wrap">
               <div style="flex:1;min-width:130px">
                 <label class="f" style="margin-top:0;font-size:13px">شهر</label>
@@ -1494,79 +1482,82 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               </div>
             </div>
             <label class="f" style="margin-top:0;font-size:13px" id="c_loc_place_lbl">محله یا محدودهٔ دلخواه (اختیاری)</label>
-            <input type="text" id="c_loc_place" maxlength="140" placeholder="مثلاً: اطراف ایستگاه مرکزی، نزدیک پارک، مرکز شهر…">
-            <label class="row tiny" style="gap:6px;margin-top:8px;cursor:pointer;color:var(--p);font-weight:600">
-              <input type="checkbox" id="c_loc_save_prof" checked style="width:auto;margin:0">
-              <span>💾 این شهر را در پروفایلم ذخیره کن (بعداً در پروفایل می‌توانی عمومی یا مخفی کنی)</span>
+            <input type="text" id="c_loc_place" maxlength="140" placeholder="مثلاً: اطراف ایستگاه مرکزی، نزدیک پارک…">
+            <label class="row tiny" style="gap:6px;margin-top:8px;cursor:pointer;color:var(--p-ink);font-weight:600;align-items:center">
+              <input type="checkbox" id="c_loc_save_prof" style="width:auto;margin:0;accent-color:var(--p)">
+              <span>💾 این شهر توی پروفایلم ذخیره بمونه</span>
             </label>
           </div>
 
-          <div style="margin-bottom:14px">
-            <label class="f" style="margin-top:0">🛡️ فضای امن و هم‌فازی (کی‌ها راحت‌ترن؟)</label>
-            <div class="seg sm" style="margin:0">
+          <div style="margin-bottom:12px">
+            <label class="f" style="margin-top:0">🛡️ حریم و حال‌وهوای قرار</label>
+            <div class="seg sm" style="margin:0;margin-bottom:8px">
               <button type="button" id="vis_public" class="on" style="white-space:nowrap">🌍 عمومی</button>
               <button type="button" id="vis_nearby" style="white-space:nowrap">📍 اطراف من</button>
-              <button type="button" id="vis_private" style="white-space:nowrap">🔒 لینک خصوصی</button>
-            </div>
-            <div class="tiny" style="color:var(--muted);margin-top:4px;margin-bottom:8px" id="c_vis_hint">
-              همه در لیست ایونت‌ها می‌بینند و می‌توانند اعلام حضور کنند.
-            </div>
-            <div class="row" style="gap:8px;margin-bottom:8px;flex-wrap:wrap">
-              <div style="flex:1;min-width:140px">
-                <label class="f" style="margin-top:0;font-size:12.5px">🗣️ زبان / تمرین (اختیاری)</label>
-                <select id="c_lang_pref" style="height:42px">
-                  <option value="any">فرقی نداره</option>
-                  <option value="nl_native">🇳🇱 هلندی (نیتیو/مسلط)</option>
-                  <option value="nl_practice">🇳🇱 تمرین هلندی باهم</option>
-                  <option value="en_native">🇬🇧 انگلیسی (نیتیو/مسلط)</option>
-                  <option value="en_practice">🇬🇧 تمرین انگلیسی باهم</option>
-                  <option value="fa">🇮🇷 هم‌زبان فارسی</option>
-                </select>
-              </div>
-              <div style="flex:1;min-width:140px">
-                <label class="f" style="margin-top:0;font-size:12.5px">🤝 ترجیح همراه (اختیاری)</label>
-                <select id="c_gender_pref" style="height:42px">
-                  <option value="any">همه خوش‌آمدند</option>
-                  <option value="same_gender">🤝 ترجیحاً هم‌جنس</option>
-                  <option value="women_only">👩 فقط خانم‌ها</option>
-                  <option value="men_only">👨 فقط آقایان</option>
-                  <option value="lgbtq_safe">🌈 فضای امن و بدون قضاوت</option>
-                </select>
-              </div>
+              <button type="button" id="vis_private" style="white-space:nowrap">🔒 خصوصی</button>
             </div>
             <div class="chips" id="c_aud_chips" style="gap:6px">
               <span class="chip sm" data-smoke="no_smoke">🚭 بدون سیگار</span>
               <span class="chip sm" data-smoke="ok">🚬 سیگار اوکیم</span>
               <span class="chip sm" data-alc="no_alcohol">🥤 بدون الکل</span>
               <span class="chip sm" data-alc="ok">🍷 الکل اوکیم</span>
-              <span class="chip sm" data-audtag="veg">🥗 گیاهی / وگان</span>
-              <span class="chip sm" data-audtag="nl_friendly">🌿 هم‌فاز تجربه‌های مجاز هلند</span>
-              <span class="chip sm" data-audtag="adhd_friendly">🧠 بادی‌دبلینگ / ADHD</span>
-              <span class="chip sm" data-audtag="quiet">🤫 فضای آرام</span>
-              <span class="chip sm" data-audtag="no_photo">📸 بدون عکس/استوری</span>
             </div>
           </div>
 
-          <details style="margin-bottom:14px;background:#faf9fe;border-radius:12px;border:1.5px dashed #ded7f2;padding:9px 12px">
-            <summary style="cursor:pointer;color:var(--p);font-size:13px;font-weight:700;user-select:none;list-style:none;display:flex;align-items:center;justify-content:space-between">
-              <span>⚙️ تنظیمات بیشتر (توضیح، تاریخ انقضا، نام برگزارکننده)</span>
+          <details style="margin-bottom:12px;background:#faf9fe;border-radius:12px;border:1.5px dashed #ded7f2;padding:9px 12px">
+            <summary style="cursor:pointer;color:var(--p-ink);font-size:13px;font-weight:700;user-select:none;list-style:none;display:flex;align-items:center;justify-content:space-between">
+              <span>⚙️ گزینه‌های بیشتر (دونفره، زبان، هم‌جنس، گیاهی، توضیح…)</span>
               <span style="font-size:11px;opacity:0.7">▼</span>
             </summary>
             <div style="margin-top:10px;padding-top:8px;border-top:1px solid #eeeaf8">
+              <label class="f" style="margin-top:0;font-size:13px">چند نفره باشه؟</label>
+              <div class="seg sm" style="margin:0 0 10px">
+                <button type="button" id="c_tgt_group" class="on" style="white-space:nowrap">👥 جمعی</button>
+                <button type="button" id="c_tgt_pair" style="white-space:nowrap">👯‍♀️ دونفره (۱ به ۱)</button>
+              </div>
+              <div class="row" style="gap:8px;margin-bottom:10px;flex-wrap:wrap">
+                <div style="flex:1;min-width:140px">
+                  <label class="f" style="margin-top:0;font-size:12.5px">🗣️ زبان / تمرین</label>
+                  <select id="c_lang_pref">
+                    <option value="any">فرقی نداره</option>
+                    <option value="nl_native">🇳🇱 هلندی (نیتیو/مسلط)</option>
+                    <option value="nl_practice">🇳🇱 تمرین هلندی باهم</option>
+                    <option value="en_native">🇬🇧 انگلیسی (نیتیو/مسلط)</option>
+                    <option value="en_practice">🇬🇧 تمرین انگلیسی باهم</option>
+                    <option value="fa">🇮🇷 هم‌زبان فارسی</option>
+                  </select>
+                </div>
+                <div style="flex:1;min-width:140px">
+                  <label class="f" style="margin-top:0;font-size:12.5px">🤝 ترجیح همراه</label>
+                  <select id="c_gender_pref">
+                    <option value="any">همه خوش‌آمدند</option>
+                    <option value="same_gender">🤝 ترجیحاً هم‌جنس</option>
+                    <option value="women_only">👩 فقط خانم‌ها</option>
+                    <option value="men_only">👨 فقط آقایان</option>
+                    <option value="lgbtq_safe">🌈 فضای امن و بدون قضاوت</option>
+                  </select>
+                </div>
+              </div>
+              <div class="chips" id="c_aud_extra_chips" style="gap:6px;margin-bottom:10px">
+                <span class="chip sm" data-audtag="veg">🥗 گیاهی / وگان</span>
+                <span class="chip sm" data-audtag="nl_friendly">🌿 تجربه‌های مجاز هلند</span>
+                <span class="chip sm" data-audtag="adhd_friendly">🧠 بادی‌دبلینگ / ADHD</span>
+                <span class="chip sm" data-audtag="quiet">🤫 فضای آرام</span>
+                <span class="chip sm" data-audtag="no_photo">📸 بدون عکس/استوری</span>
+              </div>
               <label class="f" style="margin-top:0">توضیح کوتاه (اختیاری)</label>
               <input type="text" id="c_note" maxlength="300" placeholder="مثلاً: صبح‌ها قبل از کار در پارک…" style="margin-bottom:8px">
-              <label class="f">⏰ تاریخ انقضا یا مهلت ایونت (اختیاری)</label>
+              <label class="f">⏰ تا کی باز بمونه؟ (اختیاری)</label>
               <input type="date" id="c_expires" style="margin-bottom:4px">
-              <span class="tiny" id="c_expires_lbl" style="color:var(--p);font-weight:600;display:block;margin-bottom:4px"></span>
-              <span class="tiny" style="color:var(--muted);display:block;margin-bottom:10px">بعد از این تاریخ، ایونت خودکار از دید عموم برداشته می‌شود.</span>
-              <label class="f">نام نمایشی برگزارکننده (اختیاری)</label>
+              <span class="tiny" id="c_expires_lbl" style="color:var(--p-ink);font-weight:600;display:block;margin-bottom:8px"></span>
+              <label class="f">نام برگزارکننده (اختیاری)</label>
               <input type="text" id="c_org" maxlength="40" placeholder="مثلاً مریم" value="${esc(myName)}">
             </div>
           </details>
 
           <div id="c_err"></div>
-          <div style="margin-top:14px">
-            <button class="btn block" id="c_go_open" style="font-size:15px;padding:12px 16px;font-weight:800">🚀 ساخت قرار و دریافت لینک اشتراک ✨</button>
+          <div style="margin-top:10px">
+            <button class="btn block" id="c_go_open" style="font-size:15px;padding:12px 16px;font-weight:800">ساخت قرار و گرفتن لینک ✨</button>
           </div>
         </div>
 
@@ -1650,10 +1641,15 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             }).join("")}
               </div>
             ` : `
-              <div style="text-align:center;padding:24px 16px;background:#f9f9fc;border-radius:14px;color:var(--muted);margin-top:8px">
-                <div style="font-size:28px;margin-bottom:6px">🌿</div>
-                <p class="tiny" style="margin:0 0 12px;font-size:13.5px">هنوز ایونتی ثبت نشده است. اولین قرار را خودت بساز!</p>
-                <button type="button" class="btn ghost sm" id="empty_go_create">✨ ساخت اولین قرار ←</button>
+              <div style="text-align:center;padding:18px 14px;background:#f9f8fe;border:1.5px dashed #dcd4f5;border-radius:14px;margin-top:8px">
+                <div style="font-size:26px;margin-bottom:4px">🌿</div>
+                <b style="font-size:14.5px;display:block;margin-bottom:4px">هنوز قرار فعالی توی لیست نیست</b>
+                <p class="tiny muted" style="margin:0 0 12px">یکی از این قرارهای پرطرفدار رو با یک ضربه شروع کن و لینکش رو توی گروه بفرست:</p>
+                <div style="display:flex;flex-direction:column;gap:7px;text-align:right">
+                  <button type="button" class="btn ghost sm" data-quick-start="پیاده‌روی ثابت هفتگی">🌳 شروع قرار «پیاده‌روی ثابت هفتگی» ←</button>
+                  <button type="button" class="btn ghost sm" data-quick-start="کافه و گپ آرام">☕ شروع قرار «کافه و گپ آرام» ←</button>
+                  <button type="button" class="btn ghost sm" data-quick-start="بادی‌دبلینگ و کار کنار هم">🧠 شروع قرار «بادی‌دبلینگ و کار کنار هم» ←</button>
+                </div>
               </div>
             `}
           </div>
@@ -1661,7 +1657,46 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       </div>
     `;
     bindLoginLinks();
-    if (sharedProf) openProfileModal(sharedProf);
+    if (sharedProf) {
+      // Read-only safe viewer for shared profile links (?u=<name>) — never exposes owner edit controls or hidden fields
+      const sw = document.createElement("div");
+      sw.id = "dh_shared_prof_modal";
+      sw.className = "drawer-backdrop";
+      const spData = sharedProf.data || {};
+      const spPub = new Set(Array.isArray(sharedProf.public_fields) ? sharedProf.public_fields : []);
+      const SAFE_ORDER = ["origin", "can_cities", "free_windows", "activities", "hobbies", "about"];
+      const spTags = SAFE_ORDER.filter(k => spPub.has(k) || k === "can_cities" || k === "free_windows")
+        .map(k => { const v = showVal(k, spData[k]); return v ? `<span class="summary-tag"><b>${LABEL[k]}:</b> <bdi>${esc(v)}</bdi></span>` : ""; })
+        .filter(Boolean).join("");
+      sw.innerHTML = `<div class="drawer">
+        <div class="row" style="justify-content:space-between;margin-bottom:10px">
+          <div class="row" style="gap:8px">
+            <div class="av-sm" style="background:${colorOf(sharedProf.name)};width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800">${esc(sharedProf.name.slice(0,1))}</div>
+            <div><b style="font-size:16px;display:block">${esc(sharedProf.name)}</b><span class="tiny muted">پروفایل اشتراکی (فقط بخش‌های عمومی)</span></div>
+          </div>
+          <button type="button" class="btn line sm" id="sp_close">✕ بستن</button>
+        </div>
+        ${spTags ? `<div class="summary-tags">${spTags}</div>` : `<p class="muted tiny">بخش‌های شخصی این پروفایل خصوصی نگه داشته شده‌اند 🔒</p>`}
+        <button type="button" class="btn block" id="sp_make_pair" style="margin-top:12px">✨ ساخت قرار دونفره با ${esc(sharedProf.name)}</button>
+      </div>`;
+      root.appendChild(sw);
+      sw.querySelector("#sp_close").onclick = () => sw.remove();
+      sw.onclick = (ev) => { if (ev.target === sw) sw.remove(); };
+      sw.querySelector("#sp_make_pair").onclick = () => {
+        sw.remove();
+        switchHomeTab(false);
+        if ($("#c_title")) $("#c_title").value = `قرار دونفره با ${sharedProf.name}`;
+        $("#c_tgt_pair")?.click();
+        $("#c_title")?.focus();
+      };
+    }
+    root.querySelectorAll("[data-quick-start]").forEach(btn => {
+      btn.onclick = () => {
+        switchHomeTab(false);
+        if ($("#c_title")) $("#c_title").value = btn.dataset.quickStart;
+        $("#c_title")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      };
+    });
     const feedSeeAll = $("#feed_see_all");
     if (feedSeeAll) feedSeeAll.onclick = () => {
       switchHomeTab(true);
@@ -1869,7 +1904,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         $("#c_aud_chips").querySelectorAll("[data-alc]").forEach(x => x.classList.toggle("on", x.dataset.alc === alcPref));
       };
     });
-    $("#c_aud_chips")?.querySelectorAll("[data-audtag]").forEach(el => {
+    root.querySelectorAll("[data-audtag]").forEach(el => {
       el.onclick = () => {
         const t = el.dataset.audtag;
         if (audTags.has(t)) audTags.delete(t); else audTags.add(t);
@@ -2045,6 +2080,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       app.innerHTML = `<div class="card"><h2>این لینک پیدا نشد 😕</h2><p class="muted">شاید برگزارکننده پاکش کرده باشد.</p><a class="btn" href="/d">یک دورهمی تازه بساز</a></div>`;
       return;
     }
+    M.options = Array.isArray(M.options) ? M.options : [];
     const s = store.get("dh_"+code) || {};
     if (M.is_admin && M.admin_token) ADMIN = M.admin_token;
     if (M.my_edit) s.edit = M.my_edit;                // signed in: my answer follows me across devices
@@ -2057,31 +2093,44 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     resultPage();
   }
 
-  function shareText(){
-    const locTxt = fmtLocation(M.final?.location);
-    const rhyTxt = fmtRhythm(M.final?.rhythm);
-    return `سلام 🌿 برای «${M.title}» (کد دورهمی: ${M.code})${rhyTxt ? `\n${rhyTxt}` : ""}${locTxt ? `\n${locTxt}` : ""}\nاین لینک را باز کنید و بگویید چه ساعت‌هایی و تا چه محدوده‌ای می‌توانید بیایید:\n${linkFor(M.code)}`;
+  function shareText(includeUrl = true){
+    const locObj = M.final?.location;
+    const safeLoc = locObj && locObj.mode === "exact" ? { ...locObj, mode: "area", place: "" } : locObj;
+    const locTxt = fmtLocation(safeLoc, true);
+    const rhyTxt = fmtRhythm(M.final?.rhythm, true);
+    const audBadges = fmtAudience(M.final?.audience, Boolean(M.women_only)).slice(0, 3);
+    const byTxt = M.organizer_name ? ` (از طرف ${M.organizer_name})` : "";
+    const cntTxt = M.count > 0 ? `👥 تا الان ${fa(M.count)} نفر اعلام آمادگی کردن` : "";
+    const lines = [
+      `سلام 🌿 برای «${M.title}»${byTxt}`,
+      [rhyTxt, locTxt].filter(Boolean).join(" · "),
+      audBadges.length ? audBadges.join(" · ") : "",
+      cntTxt,
+      "بدون نیاز به ثبت‌نام · ۱ دقیقه‌ای (اطلاعاتت می‌تونه خصوصی بمونه):",
+      includeUrl ? linkFor(M.code) : "",
+    ].filter(Boolean);
+    return lines.join("\n");
   }
   function shareButtons(){
     return `
       <div style="background:#f7f5ff;border:1.5px dashed #d5cbf5;border-radius:12px;padding:8px 12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
-        <span class="tiny">🔑 کد ورود به این دورهمی:</span>
+        <span class="tiny">🔑 کد ورود به این قرار:</span>
         <div class="row" style="gap:6px">
-          <code style="font-size:16px;font-weight:800;color:var(--p);letter-spacing:1px">${esc(M.code)}</code>
+          <code class="ltr" style="font-size:16px;font-weight:800;color:var(--p-ink);letter-spacing:1px">${esc(M.code)}</code>
           <button type="button" class="btn ghost sm" id="cp_code">کپی کد</button>
         </div>
       </div>
-      <div class="copybox"><code>${esc(linkFor(M.code))}</code><button class="btn sm" id="cp">کپی لینک</button></div>
+      <div class="copybox"><code>${esc(linkFor(M.code))}</code><button class="btn sm" id="cp">کپی متن دعوت</button></div>
       <div class="row" style="margin-top:10px">
-        <a class="btn wa grow" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(shareText())}">واتس‌اپ</a>
-        <a class="btn ghost grow" style="background:#e8f4fd;color:#0088cc" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(linkFor(M.code))}&text=${encodeURIComponent(shareText().split("\n")[0])}">تلگرام</a>
+        <a class="btn wa grow" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(shareText(true))}">واتس‌اپ</a>
+        <a class="btn ghost grow" style="background:#e8f4fd;color:#0077b5" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(linkFor(M.code))}&text=${encodeURIComponent(shareText(false))}">تلگرام</a>
         ${navigator.share?`<button class="btn line grow" id="nshare">بیشتر…</button>`:""}
       </div>`;
   }
   function bindShare(){
-    const cpc = $("#cp_code"); if (cpc) cpc.onclick = async () => { try { await navigator.clipboard.writeText(M.code); toast("کد دورهمی کپی شد ✓"); } catch(e){} };
-    const cp = $("#cp"); if (cp) cp.onclick = async () => { try { await navigator.clipboard.writeText(shareText()); toast("متن و لینک کپی شد ✓"); } catch(e){ toast("کپی نشد؛ لینک را دستی انتخاب کن"); } };
-    const ns = $("#nshare"); if (ns) ns.onclick = () => navigator.share({title:M.title, text:shareText()}).catch(()=>{});
+    const cpc = $("#cp_code"); if (cpc) cpc.onclick = async () => { try { await navigator.clipboard.writeText(M.code); toast("کد قرار کپی شد ✓"); } catch(e){} };
+    const cp = $("#cp"); if (cp) cp.onclick = async () => { try { await navigator.clipboard.writeText(shareText(true)); toast("متن دعوت و لینک کپی شد ✓"); } catch(e){ toast("کپی نشد؛ لینک را دستی انتخاب کن"); } };
+    const ns = $("#nshare"); if (ns) ns.onclick = () => navigator.share({title:M.title, text:shareText(false), url:linkFor(M.code)}).catch(()=>{});
   }
   function createdPage(){
     const adminLink = `${linkFor(M.code)}?admin=${ADMIN}`;
@@ -2482,7 +2531,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const prevIdx = (cur) => quick ? (steps[cur].k === "review" ? idx("avail") : steps[cur].k === "avail" ? idx("hi") : cur - 1) : cur - 1;
     function visT(g, label){ return `<div class="vis ${PUB.has(g)?"on":""}" data-vis="${g}"><span class="sw"></span><span>${label}</span></div>`; }
     function optM(k,e,b,s){ return `<div class="opt ${(D.modes||[]).includes(k)?"on":""}" data-mode="${k}"><span class="e">${e}</span><div><b>${b}</b><span>${s}</span></div></div>`; }
-    function tri(k, L, emo){ return `<div class="opts">${Object.entries(L).map(([v,l],i)=>`<div class="opt ${D[k]===v?"on":""}" data-${k}="${v}"><span class="e">${emo[i]}</span><div><b>${l.replace("می‌دهد","می‌دهم").replace("می‌کند","می‌کند").replace("خودش","خودم").replace("برایش","برایم").replace("اذیتش","اذیتم").replace("کنارش","کنارم").replace("ندارد","ندارم").replace("می‌نوشد","می‌نوشم").replace("می‌کشد","می‌کشم").replace("مصرف می‌کند","مصرف می‌کنم")}</b></div></div>`).join("")}</div>`; }
+    function tri(k, L, emo){ return `<div class="opts">${Object.entries(L).map(([v,l],i)=>`<div class="opt ${D[k]===v?"on":""}" data-${k}="${v}"><span class="e">${emo[i]}</span><div><b>${l.replace("می‌دهد","می‌دهم").replace("می‌نوشد","می‌نوشم").replace("می‌کشد","می‌کشم").replace("مصرف می‌کند","مصرف می‌کنم").replace("خودش","خودم").replace("برایش","برایم").replace("اذیتش","اذیتم").replace("کنارش","کنارم").replace("ندارد","ندارم")}</b></div></div>`).join("")}</div>`; }
     function oneOf(sel, set, cls){ root.querySelectorAll(sel).forEach(el => el.onclick = () => {
       const key = Object.keys(el.dataset)[0]; const v = el.dataset[key];
       const same = el.classList.contains("on");
@@ -2525,11 +2574,13 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       const b = $("#f_next"); b.disabled = true; b.innerHTML = `<span class="spin"></span>`;
       const pubFields = []; for (const [g,ks] of Object.entries(GROUPS)) if (PUB.has(g)) pubFields.push(...ks);
       ["about","hobbies","question"].forEach(k => pubFields.push(k));  // these are only asked to be shared
-      const clean = {}; for (const [k,v] of Object.entries(D)) if (v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && !v.length)) clean[k] = v;
+      const clean = {}; for (const [k,v] of Object.entries(D)) if (k !== "private_challenges" && k !== "psych" && v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && !v.length)) clean[k] = v;
       try {
         const r = await rpc("dh_respond", {p_code:CODE, p_edit:edit||null, p_name:NAME, p_data:clean, p_public:pubFields});
         store.set("dh_"+CODE, {...(store.get("dh_"+CODE)||{}), title:M.title, edit:r.edit_token, name:NAME});
         const keep = {...clean}; delete keep.avail;
+        if (D.private_challenges) keep.private_challenges = D.private_challenges;
+        if (D.psych) keep.psych = D.psych;
         if (!USER) { store.set("dh_last", {name:NAME, email:keep.email||"", data:keep, pub:pubFields, saved:true}); }
         fetch("/api/d/profiles", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({name:NAME, email:keep.email||null, data:keep, public_fields:pubFields})}).catch(()=>{});
         profilesLoaded = false;
@@ -2897,9 +2948,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     }
     const ORDER = ["about","age","job","origin","can_cities","free_windows","free_note","modes","seats","max_min","hobbies","activities","langs","bring","diet","dislikes","allergy","alcohol","smoke","weed","photo","quiet","access","until","night_alone","contact","question"];
     return M.people.map(p => {
-      const kp = KNOWN_PROFILES.find(x => x.name.toLowerCase() === (p.name||"").toLowerCase());
-      const merged = {...(kp?.data || {}), ...p};
-      const rows = ORDER.map(k => { const v = showVal(k, merged[k]); return v ? `<div class="kv"><b>${LABEL[k]}:</b> ${esc(v)}</div>` : ""; }).join("");
+      const rows = ORDER.map(k => { const v = showVal(k, p[k]); return v ? `<div class="kv"><b>${LABEL[k]}:</b> <bdi>${esc(v)}</bdi></div>` : ""; }).join("");
       const days = p.avail ? M.options.map((o,i)=>p.avail[i]==="yes"?fmtOpt(o):null).filter(Boolean) : [];
       return `<div class="card person"><div class="av" style="background:${colorOf(p.name)}">${esc([...p.name][0]||"?")}</div>
         <div class="grow"><div class="row" style="justify-content:space-between"><b style="font-size:16px">${esc(p.name)}</b><a class="tiny" href="/d?u=${encodeURIComponent(p.name)}">🔗 پروفایل</a></div>${rows || '<div class="tiny">بقیهٔ جواب‌ها را خصوصی نگه داشته 🔒</div>'}
