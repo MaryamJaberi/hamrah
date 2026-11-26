@@ -635,14 +635,163 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const myName = USER?.name || cached?.name || "";
     const retUrl = encodeURIComponent(location.pathname + location.search);
     return `<div class="topbar">
-      <a href="/d" style="display:flex;align-items:center;gap:6px">🌿 <b>دورهمی همراه</b></a>
-      <div class="row" style="gap:6px">
-        ${myName ? `<button type="button" class="btn line sm" id="tb_prof_btn" style="padding:5px 10px;font-size:12.5px">👤 ${esc(myName)}</button>` : ""}
+      <a href="/d" style="display:flex;align-items:center;gap:5px;white-space:nowrap">🌿 <b>همراه</b></a>
+      <div class="row" style="gap:5px;flex-wrap:nowrap">
+        <button type="button" class="btn line sm" id="tb_guide_btn" style="padding:5px 9px;font-size:12.5px;white-space:nowrap">❓ راهنما</button>
+        ${myName ? `<button type="button" class="btn line sm" id="tb_prof_btn" style="padding:5px 9px;font-size:12.5px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">👤 ${esc(myName)}</button>` : ""}
         ${USER
-          ? `<a href="/out" data-ext="1" style="font-size:12.5px">بریم بیرون ←</a>`
-          : `<a href="/login?next=${retUrl}" data-ext="1" data-login="1" class="btn ghost sm" style="padding:5px 11px;font-size:12.5px">🔐 ورود / ثبت‌نام</a>`}
+          ? `<a href="/out" data-ext="1" style="font-size:12.5px;white-space:nowrap">بریم بیرون ←</a>`
+          : `<a href="/login?next=${retUrl}" data-ext="1" data-login="1" class="btn ghost sm" style="padding:5px 10px;font-size:12.5px;white-space:nowrap">🔐 ورود</a>`}
       </div>
     </div>`;
+  }
+
+  function openGuideModal(startStep = 0) {
+    let existing = document.getElementById("dh_guide_modal");
+    if (existing) existing.remove();
+    const wrap = document.createElement("div");
+    wrap.id = "dh_guide_modal";
+    wrap.className = "drawer-backdrop";
+    let step = Math.max(0, Math.min(4, startStep));
+
+    const GUIDE_STEPS = [
+      {
+        icon: "⏳",
+        tag: "قدم ۱ از ۵ · فلسفهٔ همراه",
+        title: "چطور دوست واقعی پیدا کنیم؟",
+        body: "دوستی واقعی با «یه روزی همو ببینیم» ساخته نمی‌شه؛ با <b>ساعت مشترک و قرار ثابت</b> ساخته می‌شه.",
+        points: [
+          "پژوهش‌ها می‌گن از آشنایی تا دوست معمولی حدود <b>۵۰ ساعت</b> و تا دوست صمیمی حدود <b>۲۰۰ ساعت</b> وقت مشترک لازمه.",
+          "یه قرار سادهٔ ۲ ساعته در هفته (مثلاً سه‌شنبه‌ها پیاده‌روی یا کافه و کار کنار هم)، توی ۶ ماه می‌شه بیش از ۵۰ ساعت!",
+          "توی «همراه» لازم نیست اول ثبت‌نام کنی یا اطلاعاتت رو عمومی کنی؛ همه‌چیز آروم و بدون فشاره."
+        ],
+        ctaLabel: "",
+        ctaAction: "",
+      },
+      {
+        icon: "🔍",
+        tag: "قدم ۲ از ۵ · شروع بی‌دردسر",
+        title: "اول قرارهای باز اطراف رو ببین",
+        body: "می‌تونی بدون ثبت‌نام ببینی چه قرارهایی نزدیکت بازه، یا کد/لینکی که دوستت فرستاده رو وارد کنی.",
+        points: [
+          "آدرس دقیق مکان‌ها و جزئیات شخصی بقیه تا وقتی خودت اعلام آمادگی نکنی پوشانده می‌مونه.",
+          "وقتی روی یک قرار می‌زنی، فقط شهرها و ساعت‌های آزادت رو می‌زنی تا بهترین زمان و جای وسط برای همه پیدا بشه.",
+          "اگر حال‌وهوای قرار (مثلاً سیگار یا الکل) با مرزهای تو نخونه، بی‌سروصدا فقط به خودت یادآوری می‌شه."
+        ],
+        ctaLabel: "🔍 رفتن به لیست قرارها",
+        ctaAction: "find",
+      },
+      {
+        icon: "✨",
+        tag: "قدم ۳ از ۵ · ساخت قرار و دعوت",
+        title: "یه قرار ساده بساز و توی گروه بفرست",
+        body: "اگه قرار دلخواهت هنوز توی لیست نیست، توی ۳۰ ثانیه خودت اولیش رو بساز!",
+        points: [
+          "موضوعش رو بزن (پیاده‌روی ثابت، بادی‌دبلینگ/ADHD، تمرین هلندی، کافه آرام، رستوران گیاهی…).",
+          "حریم و خط قرمزهاش رو انتخاب کن (عمومی یا فقط با لینک خصوصی، بدون سیگار/الکل، فقط خانم‌ها، بدون عکس).",
+          "<b>نکتهٔ طلایی:</b> بعد از ساخت قرار، اول وقت و شهر خودت رو ثبت کن و بعد لینکش رو توی واتس‌اپ یا تلگرام بفرست تا بقیه ببینن قرار زنده است!"
+        ],
+        ctaLabel: "✨ ساخت اولین قرار من",
+        ctaAction: "create",
+      },
+      {
+        icon: "🧩",
+        tag: "قدم ۴ از ۵ · خودشناسی خصوصی",
+        title: "۳ سؤال کوتاه برای پیشنهادهای بهتر",
+        body: "توی بخش «خودشناسی»، ۴ مینی‌تست کوتاه (فقط ۴۵ ثانیه) برای شناخت انرژی اجتماعی و ریتم دوستی خودت داریم.",
+        points: [
+          "نتیجهٔ تست‌ها <b>۱۰۰٪ خصوصی</b> می‌مونه و هیچ‌کس دیگه نمی‌بینتش.",
+          "فقط کمک می‌کنه قرارهایی که به حال‌وهوات می‌خورن (مثلاً جمع‌های کوچک و آرام یا فعالیت‌های گروهی) برات بالاتر بیان.",
+          "نتیجه‌اش برای خودت هم یه تصویر جالب و بی‌قضاوت از سبک دوستیت می‌سازه."
+        ],
+        ctaLabel: "🧩 شروع خودشناسی (۴۵ ثانیه)",
+        ctaAction: "psych",
+      },
+      {
+        icon: "🔒",
+        tag: "قدم ۵ از ۵ · حریم خصوصی و هم‌مسیرِ امن",
+        title: "کنترل کامل + پیدا کردن هم‌مسیر بدون قضاوت",
+        body: "توی پروفایلت، اختیار تک‌تک اطلاعاتت دست خودته.",
+        points: [
+          "کنار هر بخش (شهرها، ساعت‌های آزاد، خط قرمزها، علایق) دکمهٔ <b>«👁️ بقیه ببینن»</b> یا <b>«🔒 فقط برای خودم»</b> هست.",
+          "توی <b>«دغدغه‌های مشترک (کاملاً محرمانه)»</b> می‌تونی مسیرهایی مثل ADHD، ورزش بدون قضاوت یا تازه‌وارد بودن رو انتخاب کنی.",
+          "هیچ‌کس این گزینه‌ها رو نمی‌بینه؛ فقط اگر نفر دیگه‌ای نزدیکت <b>دقیقاً همین مسیر</b> رو زده باشه و مرزهای سیگار/الکل‌تون بهم بخوره، به هم معرفیتون می‌کنیم 🌿"
+        ],
+        ctaLabel: "👤 باز کردن پروفایل و بخش محرمانه",
+        ctaAction: "profile",
+      },
+    ];
+
+    const drawGuide = () => {
+      const s = GUIDE_STEPS[step];
+      wrap.innerHTML = `
+        <div class="drawer">
+          <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px">
+            <b style="font-size:16.5px">📘 راهنمای گام‌به‌گام «همراه»</b>
+            <button type="button" class="btn line sm" id="gd_close">✕ بستن</button>
+          </div>
+
+          <div class="row" style="gap:5px;margin-bottom:12px;justify-content:center">
+            ${GUIDE_STEPS.map((st, idx) => `
+              <button type="button" data-gd-step="${idx}" style="flex:1;height:6px;border:0;border-radius:99px;cursor:pointer;background:${idx <= step ? "var(--p)" : "#e4dff5"};transition:.2s" aria-label="قدم ${idx + 1}"></button>
+            `).join("")}
+          </div>
+
+          <div style="background:linear-gradient(135deg,#f8f5ff 0%,#eef7f6 100%);border:1.5px solid #dfd7f3;border-radius:16px;padding:16px;margin-bottom:12px">
+            <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:6px">
+              <span class="pill sm" style="background:#fff;color:var(--p-ink)">${s.tag}</span>
+              <span style="font-size:28px;line-height:1">${s.icon}</span>
+            </div>
+            <h2 style="margin:0 0 6px;font-size:18px;color:var(--ink)">${s.title}</h2>
+            <p style="margin:0 0 10px;font-size:14px;line-height:1.7;color:#38324d">${s.body}</p>
+            <ul style="margin:0;padding:0 18px 0 0;display:flex;flex-direction:column;gap:7px;font-size:13.5px;line-height:1.65;color:#433d59">
+              ${s.points.map(pt => `<li>${pt}</li>`).join("")}
+            </ul>
+            ${s.ctaLabel ? `<button type="button" class="btn ghost sm block" id="gd_action" style="margin-top:12px">${s.ctaLabel}</button>` : ""}
+          </div>
+
+          <div class="row" style="gap:8px;justify-content:space-between">
+            ${step > 0
+              ? `<button type="button" class="btn line" id="gd_prev" style="min-width:92px">قبلی</button>`
+              : `<button type="button" class="btn line" id="gd_skip" style="min-width:92px">بستن</button>`}
+            ${step < GUIDE_STEPS.length - 1
+              ? `<button type="button" class="btn grow" id="gd_next">قدم بعدی ←</button>`
+              : `<button type="button" class="btn grow" id="gd_done">متوجه شدم، بریم شروع کنیم ✨</button>`}
+          </div>
+        </div>`;
+
+      const close = () => wrap.remove();
+      wrap.querySelector("#gd_close").onclick = close;
+      wrap.onclick = (ev) => { if (ev.target === wrap) close(); };
+      wrap.querySelectorAll("[data-gd-step]").forEach(b => {
+        b.onclick = () => { step = Number(b.dataset.gdStep); drawGuide(); };
+      });
+      if (wrap.querySelector("#gd_prev")) wrap.querySelector("#gd_prev").onclick = () => { step--; drawGuide(); };
+      if (wrap.querySelector("#gd_skip")) wrap.querySelector("#gd_skip").onclick = close;
+      if (wrap.querySelector("#gd_next")) wrap.querySelector("#gd_next").onclick = () => { step++; drawGuide(); };
+      if (wrap.querySelector("#gd_done")) wrap.querySelector("#gd_done").onclick = close;
+
+      const actBtn = wrap.querySelector("#gd_action");
+      if (actBtn) {
+        actBtn.onclick = () => {
+          close();
+          if (s.ctaAction === "psych") { openProfileModal(null, "psych"); return; }
+          if (s.ctaAction === "profile") { openProfileModal(null, "profile"); return; }
+          if (s.ctaAction === "find") {
+            if (location.pathname !== "/d") { go("/d#find"); return; }
+            $("#mode_find_tab")?.click();
+            $("#find_pane")?.scrollIntoView({ behavior: "smooth" });
+          } else if (s.ctaAction === "create") {
+            if (location.pathname !== "/d") { go("/d"); return; }
+            $("#mode_create_tab")?.click();
+            $("#c_title")?.focus();
+          }
+        };
+      }
+    };
+
+    root.appendChild(wrap);
+    drawGuide();
   }
   function wireWeekGrid(container, getArr, setArr, attrName) {
     const refreshCells = () => {
@@ -1238,6 +1387,8 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     }));
     const tbBtn = $("#tb_prof_btn");
     if (tbBtn) tbBtn.onclick = () => openProfileModal();
+    const gdBtn = $("#tb_guide_btn");
+    if (gdBtn) gdBtn.onclick = () => openGuideModal(0);
   }
   function memberCard(){
     if (USER) {
