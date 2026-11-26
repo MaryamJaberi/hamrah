@@ -108,13 +108,26 @@ export async function POST(req: Request) {
           const vis = ['public', 'nearby', 'private'].includes(body.audience.visibility) ? body.audience.visibility : 'public';
           const smoke = ['any', 'no_smoke', 'ok'].includes(body.audience.smoke) ? body.audience.smoke : 'any';
           const alcohol = ['any', 'no_alcohol', 'ok'].includes(body.audience.alcohol) ? body.audience.alcohol : 'any';
+          const gender_pref = ['any', 'same_gender', 'women_only', 'men_only', 'lgbtq_safe'].includes(body.audience.gender_pref)
+            ? body.audience.gender_pref
+            : 'any';
+          const lang = ['any', 'nl_native', 'nl_practice', 'en_native', 'en_practice', 'fa'].includes(body.audience.lang)
+            ? body.audience.lang
+            : 'any';
           const allowedTags = new Set(['veg', 'nl_friendly', 'adhd_friendly', 'quiet', 'no_photo']);
           const tags = Array.isArray(body.audience.tags)
             ? Array.from(new Set(body.audience.tags.filter((t: unknown) => typeof t === 'string' && allowedTags.has(t))))
             : [];
-          audience = (vis === 'public' && smoke === 'any' && alcohol === 'any' && !tags.length)
+          audience = (vis === 'public' && smoke === 'any' && alcohol === 'any' && gender_pref === 'any' && lang === 'any' && !tags.length)
             ? null
-            : { visibility: vis, smoke, alcohol, ...(tags.length ? { tags } : {}) };
+            : {
+                visibility: vis,
+                smoke,
+                alcohol,
+                ...(gender_pref !== 'any' ? { gender_pref } : {}),
+                ...(lang !== 'any' ? { lang } : {}),
+                ...(tags.length ? { tags } : {}),
+              };
         } else {
           audience = null;
         }
