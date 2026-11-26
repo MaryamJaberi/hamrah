@@ -286,12 +286,14 @@ export function computeEventMatch(
   const rhy = meetup.rhythm || meetup.final?.rhythm || {};
   const tags: string[] = Array.isArray(aud.tags) ? aud.tags : [];
   const title = String(meetup.title || '') + ' ' + String(meetup.note || '');
-  const isPair = /هم‌پا|دونفره|۱\s*به\s*۱|1\s*on\s*1|پارتنر|بادی/i.test(title);
+  const isPair = /هم‌پا|دو[\s\u200c]?نفره|۱\s*به\s*۱|1\s*on\s*1|پارتنر|بادی/i.test(title);
 
-  // 1. Hard boundary safety checks (penalize incompatible boundaries)
+  // 1. Hard boundary safety checks (penalize incompatible boundaries symmetrically)
   if (profileData.smoke === 'bothers' && aud.smoke === 'ok') score -= 40;
+  if (profileData.smoke === 'smoke' && aud.smoke === 'no_smoke') score -= 35;
   if (profileData.smoke === 'bothers' && aud.smoke === 'no_smoke') score += 20;
   if (profileData.alcohol === 'none_place' && aud.alcohol === 'ok') score -= 40;
+  if (profileData.alcohol === 'drink' && aud.alcohol === 'no_alcohol') score -= 35;
   if (profileData.alcohol === 'none_place' && aud.alcohol === 'no_alcohol') score += 20;
 
   // 2. City proximity
@@ -334,8 +336,8 @@ export function computeEventMatch(
   if ((diet.includes('vegan') || diet.includes('veg')) && tags.includes('veg')) score += 18;
 
   let badge = '';
-  if (score >= 42) badge = '✨ هم‌خوانی خیلی بالا با تو';
-  else if (score >= 22) badge = '🌿 متناسب با حال‌وهوای تو';
+  if (score >= 42) badge = '✨ خیلی به حال‌وهوات می‌خوره';
+  else if (score >= 22) badge = '🌿 هم‌فازِ تو';
 
   return { score, badge };
 }

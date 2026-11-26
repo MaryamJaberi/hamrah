@@ -143,13 +143,29 @@ export async function GET(req: Request) {
     if (!cleanName || IGNORE_NAMES.has(cleanName) || /^تست\b/i.test(cleanName)) continue;
     const key = cleanName.toLowerCase();
     const rDataRaw = (r.data && typeof r.data === 'object' ? r.data : {}) as Record<string, any>;
-    // Never expose double-blind private_challenges or psych results in public profile responses
-    const { private_challenges: _hidden, psych: _hiddenPsych, ...rData } = rDataRaw;
-    const emailKey = typeof rData.email === 'string' && rData.email.includes('@') ? rData.email.trim().toLowerCase() : null;
+    const pubList: string[] = Array.isArray(r.public_fields) ? r.public_fields : [];
+    const pubSet = new Set(pubList.filter((f) => f !== 'private_challenges' && f !== 'psych' && f !== 'email' && f !== 'contact'));
+    // Strictly project only public_fields for public directory responses (never leak private_challenges, psych, email, contact, or hidden fields)
+    const rData: Record<string, any> = {};
+    for (const [fk, fv] of Object.entries(rDataRaw)) {
+      if (pubSet.has(fk) || fk === 'can_cities' || fk === 'free_windows') {
+        if (fk !== 'private_challenges' && fk !== 'psych' && fk !== 'email' && fk !== 'contact') {
+          rData[fk] = fv;
+        }
+      }
+    }
+    const emailKey = typeof rDataRaw.email === 'string' && rDataRaw.email.includes('@') ? rDataRaw.email.trim().toLowerCase() : null;
     const prev = byName.get(key) || (emailKey ? byName.get(emailKey) : undefined);
     const m = meetupById.get(r.meetup_id);
+    // Skip responses from private, archived, or test meetups (keep __profiles__ directory entries)
+    if (m && m.code !== DIRECTORY_CODE) {
+      if (m.final?.audience?.visibility === 'private' || Boolean(m.is_archived || m.final?.archived) || /e2e|تست دورهمی/i.test(m.title ?? '')) {
+        continue;
+      }
+    }
     const isRealMeetup =
       m &&
+      m.code !== DIRECTORY_CODE &&
       !/e2e|تست دورهمی/i.test(m.title ?? '') &&
       !Boolean(m.is_archived || m.final?.archived) &&
       m.final?.audience?.visibility !== 'private';
@@ -157,9 +173,9 @@ export async function GET(req: Request) {
     if (!prev) {
       const entry = {
         name: cleanName,
-        email: emailKey,
+        email: null as string | null,
         data: { ...rData },
-        public_fields: Array.isArray(r.public_fields) ? r.public_fields : [],
+        public_fields: Array.from(pubSet),
         updated_at: r.updated_at,
         meetups: isRealMeetup
           ? [{ code: m.code, title: m.title, organizer_name: m.organizer_name, count: countByMeetupId.get(m.id) ?? 1, final: m.final }]
@@ -253,9 +269,10 @@ export async function POST(req: Request) {
   const data = body.data && typeof body.data === 'object' ? { ...body.data } : {};
   if (email) data.email = email;
   const publicFields = Array.isArray(body.public_fields)
-    ? body.public_fields.filter((x: unknown): x is string => typeof x === 'string').slice(0, 40)
+    ? body.public_fields
+        .filter((x: unknown): x is string => typeof x === 'string' && x !== 'private_challenges' && x !== 'psych' && x !== 'email')
+        .slice(0, 40)
     : [];
-  if (email && !publicFields.includes('email')) publicFields.push('email');
 
   if (!name) return NextResponse.json({ error: 'name_required' }, { status: 400 });
 

@@ -128,7 +128,7 @@ export async function POST(req: Request) {
         shared_challenges,
         shared_cities,
         shared_hobbies,
-        psych_fit: psychOverlap >= 1,
+        psych_fit: psychOverlap >= 2,
         score,
       });
     }
