@@ -1,62 +1,9 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { admin } from '@/lib/supabase/admin';
 import { getSession } from '@/lib/supabase/server';
 
 const DIRECTORY_CODE = '__profiles__';
 const IGNORE_NAMES = new Set(['مهمان', 'تست']);
-const DH_FALLBACK_URL = 'https://healdibivptzehahdvig.supabase.co';
-const DH_FALLBACK_ANON = 'sb_publishable_PCopQgyzrd2CYNlQihNxDw_7v_PrV65';
-
-async function fetchFallbackRpcProfiles() {
-  const sb = createClient(DH_FALLBACK_URL, DH_FALLBACK_ANON, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-  const [{ data: dir }, { data: m1 }] = await Promise.all([
-    sb.rpc('dh_get', { p_code: DIRECTORY_CODE, p_admin: null }),
-    sb.rpc('dh_get', { p_code: '096be90f6c', p_admin: null }),
-  ]);
-  const byName = new Map<string, any>();
-  const ingest = (m: any, isReal: boolean) => {
-    if (!m || !Array.isArray(m.people)) return;
-    for (const p of m.people) {
-      const cleanName = String(p.name ?? '').trim();
-      if (!cleanName || IGNORE_NAMES.has(cleanName) || /^تست\b/i.test(cleanName)) continue;
-      const key = cleanName.toLowerCase();
-      const { id, name, member, ...restData } = p;
-      const emailKey = typeof restData.email === 'string' && restData.email.includes('@') ? restData.email.trim().toLowerCase() : null;
-      const prev = byName.get(key) || (emailKey ? byName.get(emailKey) : undefined);
-      if (!prev) {
-        const entry = {
-          name: cleanName,
-          email: emailKey,
-          data: { ...restData },
-          public_fields: Object.keys(restData),
-          updated_at: m.created_at,
-          meetups: isReal ? [{ code: m.code, title: m.title, organizer_name: m.organizer_name, count: m.count, final: m.final }] : [],
-        };
-        byName.set(key, entry);
-        if (emailKey) byName.set(emailKey, entry);
-      } else {
-        prev.data = { ...restData, ...prev.data };
-        if (emailKey && !prev.email) {
-          prev.email = emailKey;
-          byName.set(emailKey, prev);
-        }
-        if (isReal && !prev.meetups.some((x: any) => x.code === m.code)) {
-          prev.meetups.push({ code: m.code, title: m.title, organizer_name: m.organizer_name, count: m.count, final: m.final });
-        }
-      }
-    }
-  };
-  ingest(dir, false);
-  ingest(m1, true);
-  const uniqueProfiles = Array.from(new Set(byName.values()));
-  const recentMeetups = m1
-    ? [{ code: m1.code, title: m1.title, organizer_name: m1.organizer_name, count: m1.count ?? (m1.people?.length || 0), final: m1.final, location: m1.final?.location || null, audience: m1.final?.audience || null, rhythm: m1.final?.rhythm || null, expires_at: null, is_archived: false, created_at: m1.created_at }]
-    : [];
-  return { profiles: uniqueProfiles, recentMeetups };
-}
 
 async function getOrCreateDirectoryMeetupId(db: ReturnType<typeof admin>): Promise<string | null> {
   const { data: existing } = await db
@@ -234,16 +181,8 @@ export async function GET(req: Request) {
       created_at: m.created_at,
     }));
 
-  let profiles = Array.from(new Set(byName.values()));
-  let finalMeetups = recentMeetups;
-
-  if (!profiles.length && !finalMeetups.length) {
-    const fb = await fetchFallbackRpcProfiles().catch(() => null);
-    if (fb) {
-      profiles = fb.profiles;
-      finalMeetups = fb.recentMeetups;
-    }
-  }
+  const profiles = Array.from(new Set(byName.values()));
+  const finalMeetups = recentMeetups;
 
   if (onlyEmail) {
     const found = profiles.find((p) => (p.email || p.data?.email || '').toLowerCase() === onlyEmail) ?? null;
@@ -279,23 +218,7 @@ export async function POST(req: Request) {
   const db = admin();
   const dirId = await getOrCreateDirectoryMeetupId(db).catch(() => null);
   if (!dirId) {
-    // Fallback to public RPC on Dorehami DB when service role is configured for a different project
-    const sb = createClient(DH_FALLBACK_URL, DH_FALLBACK_ANON, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-    const cleanData = { ...data };
-    delete cleanData.avail;
-    const { data: res, error } = await sb.rpc('dh_respond', {
-      p_code: DIRECTORY_CODE,
-      p_edit: body.edit_token ?? null,
-      p_name: name,
-      p_data: cleanData,
-      p_public: publicFields.length
-        ? publicFields
-        : ['origin', 'can_cities', 'free_windows', 'free_note', 'modes', 'activities', 'hobbies', 'about', 'email'],
-    });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ ok: true, name, email, edit_token: res?.edit_token ?? null });
+    return NextResponse.json({ error: 'profile_directory_unavailable' }, { status: 503 });
   }
 
   const { user } = await getSession().catch(() => ({ user: null }));
