@@ -824,7 +824,20 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     });
   }
 
-  function openProfileModal(initialProf = null, initialTab: "profile" | "psych" = "profile") {
+  async function deleteMeetupByCode(code: string, adminToken?: string | null) {
+    if (!code) return false;
+    try {
+      const tok = adminToken && adminToken !== "account" ? adminToken : null;
+      await rpc("dh_delete", { p_code: code, p_admin: tok }).catch(() => null);
+    } catch (e) {}
+    try { localStorage.removeItem("dh_" + code); } catch (e) {}
+    try { localStorage.removeItem("dh_pick_" + code); } catch (e) {}
+    RECENT_MEETUPS = RECENT_MEETUPS.filter(x => x.code !== code);
+    profilesLoaded = false;
+    return true;
+  }
+
+  function openProfileModal(initialProf = null, initialTab: "profile" | "events" | "psych" = "profile") {
     let existing = document.getElementById("dh_prof_modal");
     if (existing) existing.remove();
     const cached = store.get("dh_last");
@@ -840,9 +853,16 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const wrap = document.createElement("div");
     wrap.id = "dh_prof_modal";
     wrap.className = "drawer-backdrop";
-    let activeTab: "profile" | "psych" = initialTab;
+    let activeTab: "profile" | "events" | "psych" = initialTab;
     let activeQuizKey: string | null = null;
     let quizAnswers: string[] = [];
+    let myServerMeetups: any[] | null = null;
+    if (USER) {
+      rpc("dh_my_meetups", {}).then(res => {
+        myServerMeetups = Array.isArray(res) ? res : [];
+        if (activeTab === "events" && document.body.contains(wrap)) drawModal();
+      }).catch(() => { myServerMeetups = []; });
+    }
 
     const DEFAULT_PUB = ["origin", "can_cities", "free_windows", "activities", "hobbies"];
     const ensureProfileObj = () => {
@@ -954,19 +974,97 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         `;
       };
 
+      const getMyEventsSplit = () => {
+        const byCode = new Map<string, any>();
+        for (const sm of (myServerMeetups || [])) {
+          byCode.set(sm.code, {
+            code: sm.code,
+            title: sm.title || "قرار دورهمی",
+            organizer_name: sm.organizer_name,
+            count: sm.count,
+            admin: sm.is_admin ? "account" : null,
+            reacted: !sm.is_admin,
+            final: sm.final,
+          });
+        }
+        for (const lm of localItems()) {
+          const ex = byCode.get(lm.code);
+          if (!ex) {
+            byCode.set(lm.code, {
+              code: lm.code,
+              title: lm.title || "قرار دورهمی",
+              organizer_name: lm.organizer_name,
+              count: lm.count,
+              admin: lm.admin || null,
+              edit: lm.edit || null,
+              reacted: Boolean(lm.edit),
+              final: lm.final,
+            });
+          } else {
+            if (lm.admin && !ex.admin) ex.admin = lm.admin;
+            if (lm.edit) { ex.edit = lm.edit; ex.reacted = true; }
+          }
+        }
+        const all = Array.from(byCode.values());
+        return {
+          created: all.filter(x => Boolean(x.admin)),
+          reacted: all.filter(x => !x.admin && Boolean(x.reacted || x.edit)),
+        };
+      };
+
+      const renderEventsPane = () => {
+        const { created, reacted } = getMyEventsSplit();
+        const renderRow = (m: any, isOwner: boolean) => {
+          const href = `/d/${esc(m.code)}${m.admin && m.admin !== "account" ? `?admin=${esc(m.admin)}` : ""}`;
+          return `
+            <div style="background:#fff;border:1.5px solid #e5dff5;border-radius:13px;padding:10px 12px;margin-bottom:8px">
+              <div class="row" style="justify-content:space-between;align-items:center;gap:6px;margin-bottom:6px">
+                <div style="min-width:0;flex:1">
+                  <b style="font-size:14px;display:block">${detectActivityIcon(m.title)} ${esc(m.title)}</b>
+                  <span class="tiny muted">${m.count != null ? `👥 ${fa(m.count)} نفر` : ""}${m.count != null ? " · " : ""}<bdi dir="ltr">#${esc(m.code)}</bdi></span>
+                </div>
+                <span class="pill sm" style="background:${isOwner ? "#f3e8ff" : "#eefbf6"};color:${isOwner ? "#6b21a8" : "#0e5f4d"}">${isOwner ? "سازنده" : "شرکت‌کننده"}</span>
+              </div>
+              <div class="row" style="gap:6px;flex-wrap:wrap">
+                <a class="btn ghost sm grow" href="${href}" data-pm-open-ev="1">${isOwner ? "⚙️ مشاهده و مدیریت" : "📝 مشاهده / ویرایش جواب"}</a>
+                <button type="button" class="btn line sm" data-pm-copy-ev="${esc(m.code)}">🔗 لینک</button>
+                <button type="button" class="btn line sm" style="color:var(--bad);border-color:#f5c2c2" data-pm-del-ev="${esc(m.code)}" data-pm-del-adm="${esc(m.admin || "")}" data-pm-del-own="${isOwner ? "1" : "0"}">🗑️ ${isOwner ? "حذف" : "حذف از لیست"}</button>
+              </div>
+            </div>`;
+        };
+        return `
+          <div style="margin-bottom:14px">
+            <b style="font-size:14.5px;display:block;margin-bottom:6px">✨ قرارهایی که من ساختم (${fa(created.length)})</b>
+            ${created.length
+              ? created.map(m => renderRow(m, true)).join("")
+              : `<p class="tiny muted" style="background:#faf9fe;padding:10px 12px;border-radius:12px;margin:0">هنوز قراری نساختی — می‌تونی از صفحهٔ اول در ۳۰ ثانیه اولین قرارت رو بسازی 🌿</p>`}
+          </div>
+          <div>
+            <b style="font-size:14.5px;display:block;margin-bottom:6px">🙋‍♀️ قرارهایی که شرکت کردم / اعلام آمادگی دادم (${fa(reacted.length)})</b>
+            ${reacted.length
+              ? reacted.map(m => renderRow(m, false)).join("")
+              : `<p class="tiny muted" style="background:#faf9fe;padding:10px 12px;border-radius:12px;margin:0">هنوز به قراری اعلام آمادگی نکردی.</p>`}
+          </div>
+        `;
+      };
+
+      const { created: myCreatedEvs, reacted: myReactedEvs } = getMyEventsSplit();
+      const myEvTotal = myCreatedEvs.length + myReactedEvs.length;
+
       wrap.innerHTML = `
         <div class="drawer">
           <div class="row" style="justify-content:space-between;margin-bottom:10px">
-            <b style="font-size:17px">👤 پروفایل و خودشناسی من</b>
+            <b style="font-size:17px">👤 پروفایل من</b>
             <button type="button" class="btn line sm" id="pm_close">✕ بستن</button>
           </div>
 
           <div class="seg sm" style="margin-bottom:12px">
-            <button type="button" id="pm_tab_prof" class="${activeTab === "profile" ? "on" : ""}">👤 پروفایل و حریم خصوصی</button>
-            <button type="button" id="pm_tab_psych" class="${activeTab === "psych" ? "on" : ""}">🧩 خودشناسی ${psychCount ? `(${fa(psychCount)}/${fa(PSYCH_QUIZZES.length)})` : "(رایگان)"}</button>
+            <button type="button" id="pm_tab_prof" class="${activeTab === "profile" ? "on" : ""}">👤 پروفایل</button>
+            <button type="button" id="pm_tab_events" class="${activeTab === "events" ? "on" : ""}">📅 قرارهای من ${myEvTotal ? `(${fa(myEvTotal)})` : ""}</button>
+            <button type="button" id="pm_tab_psych" class="${activeTab === "psych" ? "on" : ""}">🧩 خودشناسی ${psychCount ? `(${fa(psychCount)}/${fa(PSYCH_QUIZZES.length)})` : ""}</button>
           </div>
 
-          ${activeTab === "psych" ? renderPsychPane() : `
+          ${activeTab === "psych" ? renderPsychPane() : activeTab === "events" ? renderEventsPane() : `
           <div style="background:#f7f5ff;border:1.5px solid #e2dcf7;border-radius:14px;padding:12px;margin-bottom:12px">
             ${USER ? `
               <div class="row" style="justify-content:space-between;align-items:center">
@@ -1096,11 +1194,51 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       wrap.querySelector("#pm_close").onclick = closeAndSync;
       wrap.onclick = (ev) => { if (ev.target === wrap) closeAndSync(); };
       const tabProf = wrap.querySelector("#pm_tab_prof");
+      const tabEvents = wrap.querySelector("#pm_tab_events");
       const tabPsych = wrap.querySelector("#pm_tab_psych");
       if (tabProf) tabProf.onclick = () => { activeTab = "profile"; activeQuizKey = null; drawModal(); };
+      if (tabEvents) tabEvents.onclick = () => { activeTab = "events"; activeQuizKey = null; drawModal(); };
       if (tabPsych) tabPsych.onclick = () => { activeTab = "psych"; drawModal(); };
       const goPsychBtn = wrap.querySelector("#pm_go_psych");
       if (goPsychBtn) goPsychBtn.onclick = () => { activeTab = "psych"; drawModal(); };
+
+      // Wire "My Events" tab actions
+      if (activeTab === "events") {
+        wrap.querySelectorAll("[data-pm-open-ev]").forEach(a => {
+          a.onclick = () => { clearAuxMaps(); wrap.remove(); };
+        });
+        wrap.querySelectorAll("[data-pm-copy-ev]").forEach(btn => {
+          btn.onclick = async () => {
+            const url = linkFor(btn.dataset.pmCopyEv);
+            try { await navigator.clipboard.writeText(url); toast("لینک قرار کپی شد ✓"); }
+            catch (e) { toast(url); }
+          };
+        });
+        wrap.querySelectorAll("[data-pm-del-ev]").forEach(btn => {
+          btn.onclick = async () => {
+            const code = btn.dataset.pmDelEv;
+            const adm = btn.dataset.pmDelAdm;
+            const isOwn = btn.dataset.pmDelOwn === "1";
+            const msg = isOwn
+              ? "این قرار برای همیشه پاک شود؟"
+              : "این قرار از لیست پروفایلت حذف شود؟";
+            if (!confirm(msg)) return;
+            btn.disabled = true;
+            if (isOwn) {
+              await deleteMeetupByCode(code, adm);
+              if (Array.isArray(myServerMeetups)) myServerMeetups = myServerMeetups.filter(x => x.code !== code);
+              toast("قرار پاک شد ✓");
+            } else {
+              try { localStorage.removeItem("dh_" + code); } catch (e) {}
+              if (Array.isArray(myServerMeetups)) myServerMeetups = myServerMeetups.filter(x => x.code !== code);
+              toast("از لیستت حذف شد ✓");
+            }
+            dirtyForHost = true;
+            drawModal();
+          };
+        });
+        return;
+      }
 
       // Wire self-discovery quizzes
       if (activeTab === "psych") {
@@ -1508,21 +1646,25 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             const locSum = fmtLocation(safeLoc, true);
             const rhySum = fmtRhythm(m.rhythm || m.final?.rhythm, true);
             const mInfo = matchByCode.get(m.code);
-            return `<a class="meetup-item" style="margin:0;padding:10px 12px" href="/d/${esc(m.code)}${m.admin && m.admin !== "account" ? `?admin=${esc(m.admin)}` : ""}">
-              <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+            const href = `/d/${esc(m.code)}${m.admin && m.admin !== "account" ? `?admin=${esc(m.admin)}` : ""}`;
+            return `<div class="meetup-item" style="margin:0;padding:10px 12px">
+              <a href="${href}" style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;text-decoration:none;color:inherit">
                 <div class="av-sm" style="background:${colorOf(m.organizer_name||'د')};width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:17px;flex:none">${icon}</div>
                 <div style="min-width:0">
                   <div class="row" style="gap:5px;flex-wrap:wrap;align-items:center">
                     <b style="font-size:14.5px">${esc(m.title || "قرار دورهمی")}</b>
                     ${mInfo?.badge ? `<span class="pill sm" style="background:#eefbf6;color:#0e5f4d;font-weight:700">${esc(mInfo.badge)}</span>` : ""}
                     ${rhySum ? `<span class="pill sm" style="background:#f3e8ff;color:#6b21a8">${esc(rhySum)}</span>` : ""}
-                    ${locSum ? `<span class="pill sm" style="background:#f3f0ff;color:var(--p)">${esc(locSum)}</span>` : ""}
+                    ${locSum ? `<span class="pill sm" style="background:#f3f0ff;color:var(--p-ink)">${esc(locSum)}</span>` : ""}
                   </div>
                   <div class="tiny muted">👤 ${esc(m.organizer_name || "دوستان")} · 👥 ${m.count != null ? `${fa(m.count)} نفر` : "باز برای اعلام آمادگی"}</div>
                 </div>
+              </a>
+              <div class="row" style="gap:5px;flex:none">
+                <a class="pill" href="${href}" style="font-weight:700;text-decoration:none">${m.admin ? "مدیریت ⚙️" : "جزئیات ←"}</a>
+                ${m.admin ? `<button type="button" class="btn line sm" data-feed-del="${esc(m.code)}" data-feed-adm="${esc(m.admin)}" style="padding:4px 8px;min-height:30px;color:var(--bad);border-color:#f5c2c2" aria-label="حذف قرار">🗑️</button>` : ""}
               </div>
-              <span class="pill" style="font-weight:700;flex:none">جزئیات ←</span>
-            </a>`;
+            </div>`;
           }).join("")}
         </div>
         <div class="row" style="justify-content:space-between;align-items:center;padding:8px 10px;background:#f7f4ff;border-radius:12px;gap:8px;flex-wrap:wrap">
@@ -1853,6 +1995,17 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       switchHomeTab(true);
       $("#find_pane")?.scrollIntoView({ behavior: "smooth" });
     };
+    root.querySelectorAll("[data-feed-del]").forEach(btn => {
+      btn.onclick = async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (!confirm("این قرار برای همیشه پاک شود؟")) return;
+        btn.disabled = true;
+        await deleteMeetupByCode(btn.dataset.feedDel, btn.dataset.feedAdm);
+        toast("قرار پاک شد ✓");
+        homePage();
+      };
+    });
     const homeOpenPsych = $("#home_open_psych");
     if (homeOpenPsych) homeOpenPsych.onclick = () => openProfileModal(null, "psych");
     const locCityEl = $("#c_loc_city");
