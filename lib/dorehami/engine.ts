@@ -61,7 +61,10 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   };
   const fmtLocation = (loc, compact = false) => {
     if (!loc || loc.mode === "flexible") return "";
-    const cityFa = (loc.city ? cityByKey(loc.city)?.fa : "") || loc.city_label || loc.city || "";
+    const multiCities = Array.isArray(loc.cities) && loc.cities.length
+      ? loc.cities.map(k => cityByKey(k)?.fa || k).filter(Boolean).join("، ")
+      : "";
+    const cityFa = multiCities || (loc.city ? cityByKey(loc.city)?.fa : "") || loc.city_label || loc.city || "";
     if (loc.mode === "exact") {
       const parts = [loc.place, cityFa].filter(Boolean);
       if (!parts.length) return "";
@@ -268,14 +271,15 @@ export function mount(root: HTMLElement, opts: DhOptions) {
   const fmtTimeBucket = (k) => (TIME_BUCKETS.find(x => x[0] === k) || [, fmtWin(k)])[1];
 
   const EVENT_IDEAS = [
-    { k: "walk", icon: "🌳", label: "پیاده‌روی ثابت", title: "پیاده‌روی ثابت و گپ 🌳", note: "هر هفته با هم پیاده‌روی کنیم و پایهٔ هم باشیم 🌿", target: "pair" },
-    { k: "bodydouble", icon: "🧠", label: "بادی‌دبلینگ (ADHD)", title: "بادی‌دبلینگ و هم‌پای تمرکز 🧠", note: "کنار هم کار یا درس انجام بدیم تا تمرکزمون بیشتر بشه (عالی برای ADHD)", target: "pair" },
-    { k: "lang", icon: "🗣️", label: "تمرین زبان (هلندی)", title: "قرار تمرین زبان هلندی 🗣️", note: "باهم هلندی حرف بزنیم (نیتیو یا مسلط / تمرین مکالمه) 🇳🇱", target: "pair" },
-    { k: "cafe", icon: "☕", label: "کافه", title: "کافه و گپ دوستانه ☕", note: "بریم یه کافه بشینیم و گپ بزنیم ☕", target: "group" },
+    { k: "walk", icon: "🌳", label: "پیاده‌روی", title: "پیاده‌روی ثابت و گپ 🌳", note: "هر هفته با هم پیاده‌روی کنیم و پایهٔ هم باشیم 🌿", target: "pair" },
+    { k: "sport", icon: "🏃‍♀️", label: "ورزش و دویدن", title: "ورزش و دویدن باهم 🏃‍♀️", note: "باهم ورزش کنیم یا بدویم تا انگیزه‌مون بیشتر شه 🏃‍♀️", target: "pair" },
+    { k: "boardgame", icon: "🎲", label: "بازی و بردگیم", title: "شب بازی و بردگیم 🎲", note: "دورهمی برای بازی‌های فکری و مافیا 🎲", target: "group" },
+    { k: "cafe", icon: "☕", label: "کافه و گپ", title: "کافه و گپ دوستانه ☕", note: "بریم یه کافه بشینیم و گپ بزنیم ☕", target: "group" },
+    { k: "racket", icon: "🏸", label: "بدمینتون / تنیس", title: "بدمینتون یا تنیس 🏸", note: "یه قرار ورزشی باحال برای بدمینتون یا تنیس 🏸", target: "pair" },
+    { k: "bike", icon: "🚴", label: "دوچرخه‌سواری", title: "دوچرخه‌سواری در طبیعت 🚴", note: "باهم یه مسیر قشنگ رکاب بزنیم 🚴", target: "group" },
     { k: "vegan", icon: "🥗", label: "رستوران گیاهی", title: "رستوران یا کافهٔ گیاهی 🥗", note: "باهم یه جای گیاهی/وگان خوب بریم 🥗", target: "group" },
-    { k: "run", icon: "🏃‍♀️", label: "دویدن", title: "همراه برای دویدن صبحگاهی 🏃‍♀️", note: "دنبال یک همراه می‌گردم صبح‌ها با هم بریم بدویم 🏃‍♀️", target: "pair" },
-    { k: "boardgame", icon: "🎲", label: "بردگیم", title: "شب بازی و بردگیم 🎲", note: "دورهمی برای بازی‌های فکری و مافیا 🎲", target: "group" },
-    { k: "food", icon: "🍽️", label: "شام/غذا", title: "دورهمی شام یا ناهار 🍽️", note: "بریم یک رستوران خوب با هم 🍽️", target: "group" },
+    { k: "food", icon: "🍽️", label: "شام / ناهار", title: "دورهمی شام یا ناهار 🍽️", note: "بریم یک رستوران خوب با هم 🍽️", target: "group" },
+    { k: "picnic", icon: "🧺", label: "پیک‌نیک و پارک", title: "پیک‌نیک و دورهمی در پارک 🧺", note: "توی پارک بشینیم، خوراکی بیاریم و گپ بزنیم 🧺", target: "group" },
   ];
 
   function detectActivityIcon(t) {
@@ -1770,26 +1774,30 @@ export function mount(root: HTMLElement, opts: DhOptions) {
 
           <div id="c_loc_box" style="display:none;margin-bottom:12px;padding:12px;background:#f8f7fc;border:1px solid #e7e2f5;border-radius:14px">
             <div style="margin-bottom:8px">
-              <label class="f" style="margin-top:0;font-size:13px">شهر</label>
+              <label class="f" style="margin-top:0;font-size:13px">شهرها (می‌تونی چندتا انتخاب کنی)</label>
+              <div class="chips-scroll" id="c_loc_cities_chips" style="margin-bottom:6px">
+                ${CITIES.filter(c => c.meet).map(c => `<span class="chip sm" data-loccity="${c.key}">${esc(c.fa)}</span>`).join("")}
+              </div>
               <select id="c_loc_city">
-                <option value="">انتخاب شهر (اختیاری)…</option>
+                <option value="">+ افزودن شهر دیگر (اختیاری)…</option>
                 ${CITIES.map(c => `<option value="${c.key}">${esc(c.fa)}</option>`).join("")}
               </select>
+              <div id="c_loc_sel_tags" class="chips" style="margin-top:6px"></div>
             </div>
             <label class="f" style="margin-top:0;font-size:13px" id="c_loc_place_lbl">محله یا محدودهٔ دلخواه (اختیاری)</label>
             <input type="text" id="c_loc_place" maxlength="140" placeholder="مثلاً: اطراف ایستگاه مرکزی، نزدیک پارک…">
             <label class="row tiny" style="gap:6px;margin-top:8px;cursor:pointer;color:var(--p-ink);font-weight:600;align-items:center">
               <input type="checkbox" id="c_loc_save_prof" style="width:auto;margin:0;accent-color:var(--p)">
-              <span>💾 این شهر توی پروفایلم ذخیره بمونه</span>
+              <span>💾 این شهرها توی پروفایلم ذخیره بمونه</span>
             </label>
           </div>
 
           <div style="margin-bottom:12px">
-            <label class="f" style="margin-top:0">🛡️ حریم و حال‌وهوای قرار</label>
+            <label class="f" style="margin-top:0">👀 کی‌ها این قرار رو ببینن؟</label>
             <div class="seg sm" style="margin:0;margin-bottom:8px">
-              <button type="button" id="vis_public" class="on" style="white-space:nowrap">🌍 عمومی</button>
-              <button type="button" id="vis_nearby" style="white-space:nowrap">📍 اطراف من</button>
-              <button type="button" id="vis_private" style="white-space:nowrap">🔒 خصوصی</button>
+              <button type="button" id="vis_public" class="on" style="white-space:nowrap">🌍 همه توی لیست</button>
+              <button type="button" id="vis_nearby" style="white-space:nowrap">📍 هم‌شهری‌ها</button>
+              <button type="button" id="vis_private" style="white-space:nowrap">🔒 فقط با لینک</button>
             </div>
             <div class="chips-scroll" id="c_aud_chips">
               <span class="chip sm" data-smoke="no_smoke">🚭 بدون سیگار</span>
@@ -1801,7 +1809,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
 
           <details style="margin-bottom:12px;background:#faf9fe;border-radius:12px;border:1.5px dashed #ded7f2;padding:9px 12px">
             <summary style="cursor:pointer;color:var(--p-ink);font-size:13px;font-weight:700;user-select:none;list-style:none;display:flex;align-items:center;justify-content:space-between">
-              <span>⚙️ گزینه‌های بیشتر (دونفره، هم‌جنس، گیاهی، توضیح…)</span>
+              <span>⚙️ گزینه‌های بیشتر (دونفره، فقط خانم‌ها، گیاهی، توضیح…)</span>
               <span style="font-size:11px;opacity:0.7">▼</span>
             </summary>
             <div style="margin-top:10px;padding-top:8px;border-top:1px solid #eeeaf8">
@@ -1814,7 +1822,6 @@ export function mount(root: HTMLElement, opts: DhOptions) {
                 <label class="f" style="margin-top:0;font-size:12.5px">🤝 ترجیح همراه</label>
                 <select id="c_gender_pref">
                   <option value="any">همه خوش‌آمدند</option>
-                  <option value="same_gender">🤝 ترجیحاً هم‌جنس</option>
                   <option value="women_only">👩 فقط خانم‌ها</option>
                   <option value="men_only">👨 فقط آقایان</option>
                   <option value="lgbtq_safe">🌈 فضای امن و بدون قضاوت</option>
@@ -1996,19 +2003,48 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     });
     const homeOpenPsych = $("#home_open_psych");
     if (homeOpenPsych) homeOpenPsych.onclick = () => openProfileModal(null, "psych");
-    const locCityEl = $("#c_loc_city");
-    if (locCityEl) locCityEl.addEventListener("change", () => {
-      const ck = locCityEl.value;
+    const selectedLocCities = new Set<string>();
+    const refreshLocCitiesUI = () => {
+      root.querySelectorAll("[data-loccity]").forEach(el => {
+        el.classList.toggle("on", selectedLocCities.has(el.dataset.loccity));
+      });
+      const tagsBox = $("#c_loc_sel_tags");
+      if (tagsBox) {
+        tagsBox.innerHTML = Array.from(selectedLocCities).map(k =>
+          `<span class="city-tag">📍 ${esc(cityByKey(k)?.fa || k)} <i data-rm-loccity="${k}">✕</i></span>`
+        ).join("");
+        tagsBox.querySelectorAll("[data-rm-loccity]").forEach(x => {
+          x.onclick = () => { selectedLocCities.delete(x.dataset.rmLoccity); refreshLocCitiesUI(); };
+        });
+      }
+    };
+    const syncCityToProfIfChecked = (ck: string) => {
       const saveChk = $("#c_loc_save_prof");
       if (ck && saveChk && saveChk.checked) {
-        const cur = store.get("dh_last") || { name: myName || "مهمان", email: myEmail || "", data: {}, pub: ["origin","can_cities","free_windows","activities","hobbies"], saved: true };
+        const cur = store.get("dh_last") || { name: myName || "", email: myEmail || "", data: {}, pub: ["origin","can_cities","free_windows","activities","hobbies"], saved: true };
         cur.data = cur.data || {};
         const arr = Array.isArray(cur.data.can_cities) ? cur.data.can_cities : [];
         if (!arr.includes(ck)) {
           cur.data.can_cities = [...arr, ck];
           store.set("dh_last", cur);
-          toast(`📍 ${cityByKey(ck)?.fa || ck} به پروفایلت اضافه شد ✓`);
         }
+      }
+    };
+    root.querySelectorAll("[data-loccity]").forEach(el => {
+      el.onclick = () => {
+        const ck = el.dataset.loccity;
+        if (selectedLocCities.has(ck)) selectedLocCities.delete(ck);
+        else { selectedLocCities.add(ck); syncCityToProfIfChecked(ck); }
+        refreshLocCitiesUI();
+      };
+    });
+    const locCityEl = $("#c_loc_city");
+    if (locCityEl) locCityEl.addEventListener("change", () => {
+      const ck = locCityEl.value;
+      if (ck) {
+        selectedLocCities.add(ck);
+        syncCityToProfIfChecked(ck);
+        refreshLocCitiesUI();
       }
     });
 
@@ -2301,16 +2337,18 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         const expDate = $("#c_expires")?.value || null;
         let locPayload = null;
         if (locMode !== "flexible") {
-          const cityKey = $("#c_loc_city")?.value || "";
+          const selVal = $("#c_loc_city")?.value || "";
+          if (selVal) selectedLocCities.add(selVal);
+          const citiesArr = Array.from(selectedLocCities);
+          const cityKey = citiesArr[0] || "";
           const cityObj = cityKey ? cityByKey(cityKey) : null;
           const placeVal = ($("#c_loc_place")?.value || "").trim();
-          const radVal = undefined;
-          if (cityKey || placeVal) {
+          if (citiesArr.length || placeVal) {
             locPayload = {
               mode: locMode,
               city: cityKey,
-              city_label: cityObj ? cityObj.fa : "",
-              radius_km: radVal,
+              cities: citiesArr,
+              city_label: citiesArr.map(k => cityByKey(k)?.fa || k).join("، ") || (cityObj ? cityObj.fa : ""),
               place: placeVal,
             };
           }
