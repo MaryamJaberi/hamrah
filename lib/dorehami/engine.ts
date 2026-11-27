@@ -1756,23 +1756,12 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           </div>
 
           <div id="c_loc_box" style="display:none;margin-bottom:12px;padding:12px;background:#f8f7fc;border:1px solid #e7e2f5;border-radius:14px">
-            <div class="row" style="gap:8px;margin-bottom:8px;flex-wrap:wrap">
-              <div style="flex:1;min-width:130px">
-                <label class="f" style="margin-top:0;font-size:13px">شهر</label>
-                <select id="c_loc_city">
-                  <option value="">انتخاب شهر (اختیاری)…</option>
-                  ${CITIES.map(c => `<option value="${c.key}">${esc(c.fa)}</option>`).join("")}
-                </select>
-              </div>
-              <div id="c_loc_rad_wrap" style="flex:1;min-width:130px">
-                <label class="f" style="margin-top:0;font-size:13px">شعاع محدوده</label>
-                <select id="c_loc_rad">
-                  <option value="5">تا ۵ کیلومتر (محله)</option>
-                  <option value="10" selected>تا ۱۰ کیلومتر (داخل شهر)</option>
-                  <option value="20">تا ۲۰ کیلومتر (اطراف شهر)</option>
-                  <option value="40">تا ۴۰ کیلومتر (منطقه‌ای)</option>
-                </select>
-              </div>
+            <div style="margin-bottom:8px">
+              <label class="f" style="margin-top:0;font-size:13px">شهر</label>
+              <select id="c_loc_city">
+                <option value="">انتخاب شهر (اختیاری)…</option>
+                ${CITIES.map(c => `<option value="${c.key}">${esc(c.fa)}</option>`).join("")}
+              </select>
             </div>
             <label class="f" style="margin-top:0;font-size:13px" id="c_loc_place_lbl">محله یا محدودهٔ دلخواه (اختیاری)</label>
             <input type="text" id="c_loc_place" maxlength="140" placeholder="مثلاً: اطراف ایستگاه مرکزی، نزدیک پارک…">
@@ -2316,7 +2305,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           const cityKey = $("#c_loc_city")?.value || "";
           const cityObj = cityKey ? cityByKey(cityKey) : null;
           const placeVal = ($("#c_loc_place")?.value || "").trim();
-          const radVal = locMode === "area" ? Number($("#c_loc_rad")?.value || 10) : undefined;
+          const radVal = undefined;
           if (cityKey || placeVal) {
             locPayload = {
               mode: locMode,
