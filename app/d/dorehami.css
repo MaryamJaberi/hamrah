@@ -30,6 +30,9 @@
 .dh .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dh .grow{flex:1}
 .dh .chips{display:flex;flex-wrap:wrap;gap:8px}
+.dh .chips-scroll{display:flex;flex-wrap:nowrap;gap:7px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:2px 1px 6px}
+.dh .chips-scroll::-webkit-scrollbar{display:none}
+.dh .chips-scroll .chip{flex:none;white-space:nowrap}
 .dh .chip{border:1.5px solid var(--line);background:#fff;border-radius:999px;padding:7px 13px;cursor:pointer;font-size:14.5px;user-select:none}
 .dh .chip.sm{padding:5px 11px;font-size:12.5px}
 .dh .chip.on{background:var(--p);border-color:var(--p);color:#fff}

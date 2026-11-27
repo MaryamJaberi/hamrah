@@ -638,7 +638,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
       <a href="/d" style="display:flex;align-items:center;gap:5px;white-space:nowrap">🌿 <b>همراه</b></a>
       <div class="row" style="gap:5px;flex-wrap:nowrap">
         <button type="button" class="btn line sm" id="tb_guide_btn" style="padding:5px 9px;font-size:12.5px;white-space:nowrap">❓ راهنما</button>
-        ${myName ? `<button type="button" class="btn line sm" id="tb_prof_btn" style="padding:5px 9px;font-size:12.5px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">👤 ${esc(myName)}</button>` : ""}
+        <button type="button" class="btn line sm" id="tb_prof_btn" style="padding:5px 9px;font-size:12.5px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">👤 ${myName ? esc(myName) : "پروفایل"}</button>
         ${USER
           ? `<a href="/out" data-ext="1" style="font-size:12.5px;white-space:nowrap">بریم بیرون ←</a>`
           : `<a href="/login?next=${retUrl}" data-ext="1" data-login="1" class="btn ghost sm" style="padding:5px 10px;font-size:12.5px;white-space:nowrap">🔐 ورود</a>`}
@@ -1135,11 +1135,12 @@ export function mount(root: HTMLElement, opts: DhOptions) {
                   <b style="font-size:13px">🛡️ مرزهای سبک زندگی (سیگار و الکل):</b>
                   ${renderVisPill("life", ["smoke","alcohol","weed"])}
                 </div>
-                <div class="chips" style="gap:6px">
+                <div class="chips-scroll" style="gap:6px">
                   <span class="chip sm ${d.smoke==="bothers"?"on":""}" data-pmsmoke="bothers">🚭 سیگار اذیتم می‌کند</span>
                   <span class="chip sm ${d.smoke==="ok"?"on":""}" data-pmsmoke="ok">🤷‍♀️ با سیگار مشکلی ندارم</span>
                   <span class="chip sm ${d.alcohol==="none_place"?"on":""}" data-pmalc="none_place">🥤 بدون الکل ترجیح می‌دهم</span>
                   <span class="chip sm ${d.alcohol==="ok"?"on":""}" data-pmalc="ok">🍷 با الکل مشکلی ندارم</span>
+                  <span class="chip sm ${(d.weed==="fine"||d.weed==="use")?"on":""}" data-pmweed="fine">🌿 با تجربه‌های مجاز هلند اوکیم</span>
                 </div>
                 <div class="row" style="justify-content:space-between;align-items:center;margin-top:10px;padding-top:8px;border-top:1px dashed #e2dcf5">
                   <span class="tiny">✨ علایق و فعالیت‌های من</span>
@@ -1155,7 +1156,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
                 <p class="tiny muted" style="margin:0 0 8px;line-height:1.6">
                   هیچ‌کس دیگر این گزینه‌ها را نمی‌بیند. فقط اگر نفر دیگری دقیقاً همین مسیر را انتخاب کرده باشد و شهر یا محدودیت‌هایتان بهم بخورد، سیستم هر دویتان را به هم معرفی می‌کند:
                 </p>
-                <div class="chips" id="hp_pchal_chips" style="margin:4px 0 8px">
+                <div class="chips-scroll" id="hp_pchal_chips" style="margin:4px 0 8px">
                   ${Object.entries(PRIVATE_CHALLENGES).map(([k, lbl]) => {
                     const on = Array.isArray(d.private_challenges) && d.private_challenges.includes(k);
                     return `<div class="chip${on ? " on" : ""}" data-pchal="${k}">${lbl}</div>`;
@@ -1435,6 +1436,16 @@ export function mount(root: HTMLElement, opts: DhOptions) {
           el.onclick = () => {
             const v = el.dataset.pmalc;
             p.data.alcohol = p.data.alcohol === v ? "" : v;
+            dirtyForHost = true;
+            drawModal();
+          };
+        });
+        wrap.querySelectorAll("[data-pmweed]").forEach(el => {
+          el.onclick = () => {
+            const isOn = p.data.weed === "fine" || p.data.weed === "use";
+            p.data.weed = isOn ? "not_near" : "fine";
+            dirtyForHost = true;
+            store.set("dh_last", { name: p.name, email: p.email || "", data: p.data || {}, pub: p.public_fields || DEFAULT_PUB, saved: true });
             drawModal();
           };
         });
@@ -1621,6 +1632,16 @@ export function mount(root: HTMLElement, opts: DhOptions) {
     const myPsychCount = myProfData?.psych ? Object.keys(myProfData.psych).filter(k => Boolean(myProfData.psych[k])).length : 0;
     const sharedProf = sharedUser ? KNOWN_PROFILES.find(p => p.name.toLowerCase() === sharedUser.trim().toLowerCase()) : null;
 
+    // Opt-in privacy gate: events tagged `nl_friendly` are ONLY visible in lists to their creator or users who explicitly opted in
+    const myNlOk = myProfData?.weed === "fine" || myProfData?.weed === "use";
+    mine = mine.filter(m => {
+      const tags = (m.audience || m.final?.audience)?.tags;
+      if (Array.isArray(tags) && tags.includes("nl_friendly")) {
+        return Boolean(m.admin) || myNlOk;
+      }
+      return true;
+    });
+
     // Privacy-preserving compatibility ranking (sorts events by silent alignment with user's hidden profile & psych traits)
     const matchByCode = new Map<string, { score: number; badge: string }>();
     for (const m of mine) {
@@ -1667,15 +1688,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
             </div>`;
           }).join("")}
         </div>
-        <div class="row" style="justify-content:space-between;align-items:center;padding:8px 10px;background:#f7f4ff;border-radius:12px;gap:8px;flex-wrap:wrap">
-          <span class="tiny" style="color:#4a3f66">🧩 <b>خودشناسی رایگان (مخفی):</b> ${myPsychCount ? `${fa(myPsychCount)} از ${fa(PSYCH_QUIZZES.length)} تست انجام شده — سیستم قرارهای هم‌فازت را بالاتر می‌آورد` : "با تست‌های ۴۵ ثانیه‌ای، سیستم بدون افشای رازت قرارها و هم‌مسیرهای بهتر را پیدا می‌کند"}</span>
-          <button type="button" class="btn ghost sm" id="home_open_psych">${myPsychCount ? "ادامهٔ تست‌ها 🧩" : "شروع تست رایگان 🧩"}</button>
-        </div>
-      </div>` : `
-      <div class="row" style="justify-content:space-between;align-items:center;padding:9px 12px;background:#f7f4ff;border:1px solid #e3dbf9;border-radius:14px;margin-bottom:10px;gap:8px;flex-wrap:wrap">
-        <span class="tiny" style="color:#4a3f66">🧩 <b>خودشناسی رایگان (۱۰۰٪ مخفی):</b> تست‌های کوتاه روانشناسی برای شناخت بهتر خودت و پیشنهاد هم‌مسیرهای امن</span>
-        <button type="button" class="btn ghost sm" id="home_open_psych">شروع تست رایگان 🧩</button>
-      </div>`}
+      </div>` : ``}
       <div class="card">
         <h1 id="home_hero_h1">✨ یک دورهمی بساز یا قرار ثابت بگذار</h1>
         <p class="muted" id="home_hero_sub" style="margin-bottom:10px;font-size:13.5px">دوستی با «یه روزی همو ببینیم» شکل نمی‌گیره؛ با یه قرارِ تکرارشونده‌ی ساده ساخته می‌شه 🌿</p>
@@ -1778,7 +1791,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
               <button type="button" id="vis_nearby" style="white-space:nowrap">📍 اطراف من</button>
               <button type="button" id="vis_private" style="white-space:nowrap">🔒 خصوصی</button>
             </div>
-            <div class="chips" id="c_aud_chips" style="gap:6px">
+            <div class="chips-scroll" id="c_aud_chips">
               <span class="chip sm" data-smoke="no_smoke">🚭 بدون سیگار</span>
               <span class="chip sm" data-smoke="ok">🚬 سیگار اوکیم</span>
               <span class="chip sm" data-alc="no_alcohol">🥤 بدون الکل</span>
@@ -1788,7 +1801,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
 
           <details style="margin-bottom:12px;background:#faf9fe;border-radius:12px;border:1.5px dashed #ded7f2;padding:9px 12px">
             <summary style="cursor:pointer;color:var(--p-ink);font-size:13px;font-weight:700;user-select:none;list-style:none;display:flex;align-items:center;justify-content:space-between">
-              <span>⚙️ گزینه‌های بیشتر (دونفره، زبان، هم‌جنس، گیاهی، توضیح…)</span>
+              <span>⚙️ گزینه‌های بیشتر (دونفره، هم‌جنس، گیاهی، توضیح…)</span>
               <span style="font-size:11px;opacity:0.7">▼</span>
             </summary>
             <div style="margin-top:10px;padding-top:8px;border-top:1px solid #eeeaf8">
@@ -1797,33 +1810,19 @@ export function mount(root: HTMLElement, opts: DhOptions) {
                 <button type="button" id="c_tgt_group" class="on" style="white-space:nowrap">👥 جمعی</button>
                 <button type="button" id="c_tgt_pair" style="white-space:nowrap">👯‍♀️ دونفره (۱ به ۱)</button>
               </div>
-              <div class="row" style="gap:8px;margin-bottom:10px;flex-wrap:wrap">
-                <div style="flex:1;min-width:140px">
-                  <label class="f" style="margin-top:0;font-size:12.5px">🗣️ زبان / تمرین</label>
-                  <select id="c_lang_pref">
-                    <option value="any">فرقی نداره</option>
-                    <option value="nl_native">🇳🇱 هلندی (نیتیو/مسلط)</option>
-                    <option value="nl_practice">🇳🇱 تمرین هلندی باهم</option>
-                    <option value="en_native">🇬🇧 انگلیسی (نیتیو/مسلط)</option>
-                    <option value="en_practice">🇬🇧 تمرین انگلیسی باهم</option>
-                    <option value="fa">🇮🇷 هم‌زبان فارسی</option>
-                  </select>
-                </div>
-                <div style="flex:1;min-width:140px">
-                  <label class="f" style="margin-top:0;font-size:12.5px">🤝 ترجیح همراه</label>
-                  <select id="c_gender_pref">
-                    <option value="any">همه خوش‌آمدند</option>
-                    <option value="same_gender">🤝 ترجیحاً هم‌جنس</option>
-                    <option value="women_only">👩 فقط خانم‌ها</option>
-                    <option value="men_only">👨 فقط آقایان</option>
-                    <option value="lgbtq_safe">🌈 فضای امن و بدون قضاوت</option>
-                  </select>
-                </div>
+              <div style="margin-bottom:10px">
+                <label class="f" style="margin-top:0;font-size:12.5px">🤝 ترجیح همراه</label>
+                <select id="c_gender_pref">
+                  <option value="any">همه خوش‌آمدند</option>
+                  <option value="same_gender">🤝 ترجیحاً هم‌جنس</option>
+                  <option value="women_only">👩 فقط خانم‌ها</option>
+                  <option value="men_only">👨 فقط آقایان</option>
+                  <option value="lgbtq_safe">🌈 فضای امن و بدون قضاوت</option>
+                </select>
               </div>
-              <div class="chips" id="c_aud_extra_chips" style="gap:6px;margin-bottom:10px">
+              <div class="chips-scroll" id="c_aud_extra_chips" style="margin-bottom:10px">
                 <span class="chip sm" data-audtag="veg">🥗 گیاهی / وگان</span>
                 <span class="chip sm" data-audtag="nl_friendly">🌿 تجربه‌های مجاز هلند</span>
-                <span class="chip sm" data-audtag="adhd_friendly">🧠 بادی‌دبلینگ / ADHD</span>
                 <span class="chip sm" data-audtag="quiet">🤫 فضای آرام</span>
                 <span class="chip sm" data-audtag="no_photo">📸 بدون عکس/استوری</span>
               </div>
@@ -1862,7 +1861,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
 
             ${mine.length ? `
               <div class="row" style="gap:6px;margin:6px 0 10px;align-items:center;justify-content:space-between">
-                <div class="chips" id="meetups_filter_bar" style="gap:5px;flex:1">
+                <div class="chips-scroll" id="meetups_filter_bar" style="flex:1;min-width:0">
                   <span class="chip sm on" data-mfilter="all">همه (${fa(mine.length)})</span>
                   <span class="chip sm" data-mfilter="recurring">🔄 قرارهای ثابت</span>
                   <span class="chip sm" data-mfilter="bodydouble">🧠 بادی‌دبلینگ</span>
@@ -2021,7 +2020,7 @@ export function mount(root: HTMLElement, opts: DhOptions) {
         tabCreate?.classList.remove("on");
         if ($("#create_pane")) $("#create_pane").style.display = "none";
         if ($("#find_pane")) $("#find_pane").style.display = "block";
-        if ($("#home_hero_h1")) $("#home_hero_h1").textContent = "🔍 پیدا کردن ایونت";
+        if ($("#home_hero_h1")) $("#home_hero_h1").textContent = "🔍 پیدا کردن قرار";
         if ($("#home_hero_sub")) $("#home_hero_sub").textContent = "کد دورهمی را وارد کن یا از بین قرارهای فعال دوستان انتخاب کن:";
       } else {
         tabCreate?.classList.add("on");
